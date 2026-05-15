@@ -1,0 +1,10 @@
+# Place icon files here. Tauri can generate them from a single 1024x1024 PNG with:
+#   npm run tauri icon path/to/icon.png
+#
+# Required files (referenced from tauri.conf.json):
+#   32x32.png
+#   128x128.png
+#   128x128@2x.png
+#   icon.png
+#
+# This is a placeholder so the directory is tracked in git.
