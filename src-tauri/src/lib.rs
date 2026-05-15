@@ -11,6 +11,7 @@ mod git;
 mod state;
 
 use state::AppState;
+use tauri::{image::Image, Manager};
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -26,6 +27,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::new())
+        .setup(|app| {
+            // Set the runtime window icon. tauri.conf.json's bundle.icon is
+            // for the packaged distribution; the dev-mode WM hint needs to
+            // be set on the window itself or it falls back to the generic
+            // Tauri icon on KDE / GNOME.
+            if let Some(window) = app.get_webview_window("main") {
+                let bytes = include_bytes!("../icons/icon.png");
+                if let Ok(icon) = Image::from_bytes(bytes) {
+                    let _ = window.set_icon(icon);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::repo::open_repository,
             commands::repo::close_repository,
@@ -38,6 +52,7 @@ pub fn run() {
             commands::stage::stage_file,
             commands::stage::unstage_file,
             commands::stage::discard_file,
+            commands::stage::ignore_file,
             commands::stage::file_diff,
             commands::stage::commit_changes,
             commands::remote::fetch_all,

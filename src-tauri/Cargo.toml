@@ -14,13 +14,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.1", features = [] }
+tauri = { version = "2.1", features = ["image-png"] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-opener = "2.2"
 tauri-plugin-shell = "2.0"
 
-# Git engine
-git2 = { version = "0.19", default-features = false, features = ["https", "vendored-libgit2", "vendored-openssl"] }
+# Git engine.
+# We vendor libgit2 (so we don't depend on Fedora's possibly-stale system version),
+# but link against the system OpenSSL via pkg-config (avoids needing Perl's
+# FindBin / IPC::Cmd modules at build time, which are split out on modern Fedora).
+# Requires `openssl-devel` to be installed system-wide.
+git2 = { version = "0.19", default-features = false, features = ["https", "vendored-libgit2"] }
 
 # Async runtime + http for OAuth
 tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }

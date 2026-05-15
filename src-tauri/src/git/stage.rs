@@ -142,6 +142,41 @@ pub fn discard_file(path: &Path, file: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Append `file` to the repo's `.gitignore`, creating the file if needed.
+///
+/// We deliberately:
+///   * Use a leading `/` so the pattern is anchored to the repo root and
+///     does not silently match files in subdirectories with the same name.
+///   * Append rather than rewriting, so user-edited content (comments,
+///     ordering, glob patterns) is preserved.
+///   * Detect existing entries to avoid duplicate lines after repeated clicks.
+pub fn ignore_file(path: &Path, file: &str) -> AppResult<()> {
+    let repo = open(path)?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+    let gitignore = workdir.join(".gitignore");
+
+    let pattern = format!("/{}", file.trim_start_matches('/'));
+    let existing = std::fs::read_to_string(&gitignore).unwrap_or_default();
+    if existing
+        .lines()
+        .map(str::trim)
+        .any(|line| line == pattern || line == file)
+    {
+        return Ok(());
+    }
+
+    let mut buf = existing;
+    if !buf.is_empty() && !buf.ends_with('\n') {
+        buf.push('\n');
+    }
+    buf.push_str(&pattern);
+    buf.push('\n');
+    std::fs::write(&gitignore, buf)?;
+    Ok(())
+}
+
 /// Produce a unified diff for a single file.
 ///
 /// `staged = true` -> diff between HEAD tree and index (i.e. what is currently

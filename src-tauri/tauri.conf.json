@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "SourceFlow",
+        "label": "main",
         "width": 1400,
         "height": 900,
         "minWidth": 1000,

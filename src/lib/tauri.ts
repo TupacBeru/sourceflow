@@ -34,6 +34,7 @@ export const api = {
   stageFile: (path: string) => tauriInvoke<null>("stage_file", { path }),
   unstageFile: (path: string) => tauriInvoke<null>("unstage_file", { path }),
   discardFile: (path: string) => tauriInvoke<null>("discard_file", { path }),
+  ignoreFile: (path: string) => tauriInvoke<null>("ignore_file", { path }),
   fileDiff: (path: string, staged: boolean) =>
     tauriInvoke<DiffPayload>("file_diff", { path, staged }),
   commitChanges: (message: string, amend: boolean) =>

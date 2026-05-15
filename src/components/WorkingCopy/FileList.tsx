@@ -1,4 +1,4 @@
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { EyeOff, Minus, Plus, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
@@ -23,6 +23,10 @@ export function FileList() {
   const discard = async (path: string) => {
     if (!confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
     await withBusy(`Discarding ${path}`, () => api.discardFile(path));
+    await reloadStatus();
+  };
+  const ignore = async (path: string) => {
+    await withBusy(`Adding ${path} to .gitignore`, () => api.ignoreFile(path));
     await reloadStatus();
   };
   const stageAll = async (entries: FileEntry[]) => {
@@ -88,16 +92,28 @@ export function FileList() {
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
             secondary={
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void discard(f.path);
-                }}
-                className="text-zinc-500 hover:text-red-400"
-                title="Discard changes"
-              >
-                <Trash2 size={12} />
-              </button>
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void ignore(f.path);
+                  }}
+                  className="text-zinc-500 hover:text-amber-400"
+                  title="Add to .gitignore"
+                >
+                  <EyeOff size={12} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void discard(f.path);
+                  }}
+                  className="text-zinc-500 hover:text-red-400"
+                  title="Discard changes"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </>
             }
           />
         ))}
@@ -125,6 +141,18 @@ export function FileList() {
             onPrimary={() => void stage(f.path)}
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
+            secondary={
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void ignore(f.path);
+                }}
+                className="text-zinc-500 hover:text-amber-400"
+                title="Add to .gitignore"
+              >
+                <EyeOff size={12} />
+              </button>
+            }
           />
         ))}
         {status.untracked.length === 0 && <Empty text="No untracked files" />}

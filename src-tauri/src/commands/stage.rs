@@ -24,6 +24,12 @@ pub fn discard_file(state: State<AppState>, path: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn ignore_file(state: State<AppState>, path: String) -> AppResult<()> {
+    let repo = state.require_repo_path()?;
+    git::stage::ignore_file(&repo, &path)
+}
+
+#[tauri::command]
 pub fn file_diff(
     state: State<AppState>,
     path: String,
