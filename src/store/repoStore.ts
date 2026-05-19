@@ -33,6 +33,13 @@ export interface TabState {
   /// History view). Reset whenever `selectedCommit` changes.
   selectedCommitFile: string | null;
   selectFile: { path: string; staged: boolean } | null;
+  /// `Date.now()` of the last successful background or user fetch for this
+  /// tab. `null` until the first one completes.
+  lastFetchedAt: number | null;
+  /// True while a *silent* background fetch is in flight. User-initiated
+  /// pulls/pushes/fetches use the global `busy` flag instead so we don't
+  /// fold the two indicators together.
+  backgroundFetching: boolean;
 }
 
 interface RepoStore {
@@ -65,7 +72,15 @@ interface RepoStore {
   /// Per-tab data refresh.
   reloadAll: (tabId: string) => Promise<void>;
   reloadStatus: (tabId: string) => Promise<void>;
+  /// Lighter refresh that only touches branches + ahead/behind - used after a
+  /// silent background fetch so we don't churn the commit list or working
+  /// copy while the user is interacting with them.
+  reloadBranchStatus: (tabId: string) => Promise<void>;
   reloadGithub: () => Promise<void>;
+
+  /// Silent fetch + refresh. Swallows errors (offline, auth) so the user is
+  /// not interrupted; the existing data simply stays as it was.
+  backgroundFetch: (tabId: string) => Promise<void>;
 
   /// Error / busy plumbing - shared across tabs (only one operation
   /// runs in the UI at a time for now). Per-tab busy comes in Phase 3.
@@ -99,6 +114,8 @@ function makeTab(id: string, path: string): TabState {
     selectedCommit: null,
     selectedCommitFile: null,
     selectFile: null,
+    lastFetchedAt: null,
+    backgroundFetching: false,
   };
 }
 
@@ -320,6 +337,9 @@ export const useRepo = create<RepoStore>((set, get) => ({
         commits,
         status,
         aheadBehind: ab,
+        // Manual reloadAll usually follows a user-initiated fetch/pull/push,
+        // so mark the freshness clock too.
+        lastFetchedAt: Date.now(),
       }),
     }));
   },
@@ -333,6 +353,47 @@ export const useRepo = create<RepoStore>((set, get) => ({
     set((s) => ({
       tabs: patchTab(s.tabs, tabId, { status, aheadBehind: ab }),
     }));
+  },
+
+  reloadBranchStatus: async (tabId) => {
+    if (!get().tabs.some((t) => t.id === tabId)) return;
+    const [branches, ab] = await Promise.all([
+      api.listBranches(tabId).catch(() => null),
+      api.aheadBehind(tabId).catch(() => null),
+    ]);
+    set((s) => ({
+      tabs: patchTab(s.tabs, tabId, {
+        ...(branches ? { branches } : {}),
+        ...(ab ? { aheadBehind: ab } : {}),
+      }),
+    }));
+  },
+
+  backgroundFetch: async (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    // Don't pile up - if either a user-initiated op or a previous background
+    // tick is still running for this tab, just skip this turn.
+    if (tab.backgroundFetching) return;
+    set((s) => ({
+      tabs: patchTab(s.tabs, tabId, { backgroundFetching: true }),
+    }));
+    try {
+      await api.fetchAll(tabId);
+      await get().reloadBranchStatus(tabId);
+      set((s) => ({
+        tabs: patchTab(s.tabs, tabId, {
+          backgroundFetching: false,
+          lastFetchedAt: Date.now(),
+        }),
+      }));
+    } catch {
+      // Silent failure: keep the previous data + lastFetchedAt so the UI
+      // doesn't visibly degrade just because the network blipped.
+      set((s) => ({
+        tabs: patchTab(s.tabs, tabId, { backgroundFetching: false }),
+      }));
+    }
   },
 
   reloadGithub: async () => {

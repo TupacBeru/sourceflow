@@ -48,6 +48,10 @@ export interface BranchInfo {
   is_head: boolean;
   upstream: string | null;
   target_sha: string | null;
+  /// Commits this branch has that its upstream doesn't (local + upstream only).
+  ahead: number;
+  /// Commits the upstream has that this branch doesn't.
+  behind: number;
 }
 
 export interface StashInfo {

@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { cn } from "@/lib/cn";
 import { relativeTime } from "@/lib/format";
+import { useResizableSplit } from "@/lib/useResizableSplit";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
 import { CommitDetails } from "./CommitDetails";
@@ -26,6 +27,18 @@ export function HistoryView() {
     [active?.commits],
   );
 
+  const {
+    containerRef,
+    sizeStyle: detailsStyle,
+    handleProps: splitterProps,
+  } = useResizableSplit({
+    side: "bottom",
+    defaultFraction: 0.4,
+    minSize: 140,
+    maxFraction: 0.8,
+    storageKey: "sourceflow:commitDetailsHeight",
+  });
+
   if (!active) return null;
 
   if (active.commits.length === 0) {
@@ -40,13 +53,10 @@ export function HistoryView() {
   const items = virtualizer.getVirtualItems();
   const hasSelected = !!active.selectedCommit;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
       <div
         ref={parentRef}
-        className={cn(
-          "min-h-0 overflow-auto scrollbar-thin",
-          hasSelected ? "flex-[3]" : "flex-1",
-        )}
+        className="min-h-0 flex-1 overflow-auto scrollbar-thin"
       >
       <div
         style={{
@@ -111,9 +121,15 @@ export function HistoryView() {
       </div>
       </div>
       {hasSelected && (
-        <div className="flex min-h-0 flex-[2] flex-col border-t border-zinc-800 bg-zinc-950">
-          <CommitDetails />
-        </div>
+        <>
+          <div {...splitterProps} title="Drag to resize" />
+          <div
+            className="flex flex-col border-t border-zinc-800 bg-zinc-950"
+            style={detailsStyle}
+          >
+            <CommitDetails />
+          </div>
+        </>
       )}
     </div>
   );

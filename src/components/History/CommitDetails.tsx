@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import { relativeTime } from "@/lib/format";
+import { useResizableSplit } from "@/lib/useResizableSplit";
 import type { CommitInfo, DiffPayload, FileEntry } from "@/lib/types";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
@@ -62,6 +63,56 @@ export function CommitDetails() {
     };
   }, [tabId, sha, setSelectedCommitFile]);
 
+  return (
+    <CommitDetailsBody
+      active={active}
+      sha={sha}
+      commit={commit}
+      files={files}
+      loadingFiles={loadingFiles}
+      filesError={filesError}
+      selectedFile={selectedFile}
+      onSelectFile={(p) =>
+        active && setSelectedCommitFile(active.id, p)
+      }
+    />
+  );
+}
+
+interface CommitDetailsBodyProps {
+  active: ReturnType<typeof useActiveTab>;
+  sha: string | null;
+  commit: CommitInfo | null;
+  files: FileEntry[];
+  loadingFiles: boolean;
+  filesError: string | null;
+  selectedFile: string | null;
+  onSelectFile: (path: string) => void;
+}
+
+function CommitDetailsBody({
+  active,
+  sha,
+  commit,
+  files,
+  loadingFiles,
+  filesError,
+  selectedFile,
+  onSelectFile,
+}: CommitDetailsBodyProps) {
+  // Hook MUST run unconditionally; we render an empty body when no commit.
+  const {
+    containerRef,
+    sizeStyle: filesSidebarStyle,
+    handleProps: splitterProps,
+  } = useResizableSplit({
+    side: "left",
+    defaultFraction: 0.3,
+    minSize: 180,
+    maxFraction: 0.7,
+    storageKey: "sourceflow:commitFilesWidth",
+  });
+
   if (!active || !sha || !commit) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
@@ -73,19 +124,17 @@ export function CommitDetails() {
   return (
     <div className="flex h-full flex-col">
       <CommitHeader commit={commit} />
-      <div className="flex min-h-0 flex-1">
+      <div ref={containerRef} className="flex min-h-0 flex-1">
         <FilesSidebar
+          style={filesSidebarStyle}
           files={files}
           loading={loadingFiles}
           error={filesError}
           selected={selectedFile}
-          onSelect={(p) => setSelectedCommitFile(active.id, p)}
+          onSelect={onSelectFile}
         />
-        <CommitDiffPanel
-          tabId={active.id}
-          sha={sha}
-          file={selectedFile}
-        />
+        <div {...splitterProps} title="Drag to resize file list" />
+        <CommitDiffPanel tabId={active.id} sha={sha} file={selectedFile} />
       </div>
     </div>
   );
@@ -119,12 +168,14 @@ function CommitHeader({ commit }: { commit: CommitInfo }) {
 }
 
 function FilesSidebar({
+  style,
   files,
   loading,
   error,
   selected,
   onSelect,
 }: {
+  style: CSSProperties;
   files: FileEntry[];
   loading: boolean;
   error: string | null;
@@ -132,7 +183,10 @@ function FilesSidebar({
   onSelect: (path: string) => void;
 }) {
   return (
-    <div className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-900/30 scrollbar-thin">
+    <div
+      className="flex shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-900/30 scrollbar-thin"
+      style={style}
+    >
       <div className="flex items-center justify-between border-b border-zinc-800/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
         <span>Files Changed</span>
         <span className="text-zinc-600">{files.length}</span>

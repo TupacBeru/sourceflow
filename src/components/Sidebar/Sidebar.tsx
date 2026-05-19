@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -77,7 +79,7 @@ function pathToHead(branches: BranchInfo[]): Set<string> {
   return set;
 }
 
-export function Sidebar() {
+export function Sidebar({ style }: { style?: CSSProperties }) {
   const active = useActiveTab();
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
@@ -140,7 +142,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-900/30 text-sm scrollbar-thin">
+    <aside
+      className="flex shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-900/30 text-sm scrollbar-thin"
+      style={style ?? { width: "18rem" }}
+    >
       <Section
         label="Local"
         icon={<GitBranch size={14} />}
@@ -284,6 +289,7 @@ function TreeBranch({
   }
 
   const open = isOpen(node.fullPath, depth);
+  const aggregate = aggregateStatus(node);
 
   return (
     <>
@@ -306,8 +312,17 @@ function TreeBranch({
         )}
         <Folder size={12} className="shrink-0 text-zinc-500" />
         <span className="truncate">{node.name}</span>
-        <span className="ml-auto pl-2 text-[10px] text-zinc-600">
-          {countLeaves(node)}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
+          {/* When the folder is collapsed, surface its aggregated ahead/behind so
+              you don't have to expand every group to know there's work to do. */}
+          {!open && (
+            <StatusPills
+              ahead={aggregate.ahead}
+              behind={aggregate.behind}
+              size="xs"
+            />
+          )}
+          <span className="text-[10px] text-zinc-600">{countLeaves(node)}</span>
         </span>
       </button>
       {open &&
@@ -330,6 +345,63 @@ function countLeaves(node: TreeNode): number {
   return node.children.reduce(
     (n, c) => n + countLeaves(c),
     node.branch ? 1 : 0,
+  );
+}
+
+/** Sum ahead/behind counts across every leaf branch under this node. */
+function aggregateStatus(node: TreeNode): { ahead: number; behind: number } {
+  let ahead = node.branch?.ahead ?? 0;
+  let behind = node.branch?.behind ?? 0;
+  for (const c of node.children) {
+    const s = aggregateStatus(c);
+    ahead += s.ahead;
+    behind += s.behind;
+  }
+  return { ahead, behind };
+}
+
+function StatusPills({
+  ahead,
+  behind,
+  size = "sm",
+}: {
+  ahead: number;
+  behind: number;
+  size?: "sm" | "xs";
+}) {
+  if (ahead === 0 && behind === 0) return null;
+  const iconSize = size === "xs" ? 9 : 10;
+  const textCls =
+    size === "xs"
+      ? "text-[9px] leading-none"
+      : "text-[10px] leading-none";
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {behind > 0 && (
+        <span
+          title={`${behind} commit${behind === 1 ? "" : "s"} to pull`}
+          className={cn(
+            "flex items-center gap-0.5 rounded bg-amber-700/40 px-1 py-0.5 font-medium text-amber-200",
+            textCls,
+          )}
+        >
+          <ArrowDown size={iconSize} />
+          {behind}
+        </span>
+      )}
+      {ahead > 0 && (
+        <span
+          title={`${ahead} commit${ahead === 1 ? "" : "s"} to push`}
+          className={cn(
+            "flex items-center gap-0.5 rounded bg-emerald-700/40 px-1 py-0.5 font-medium text-emerald-200",
+            textCls,
+          )}
+        >
+          <ArrowUp size={iconSize} />
+          {ahead}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -357,7 +429,12 @@ function BranchRow({
         style={{ opacity: branch.is_head ? 1 : 0 }}
       />
       <GitBranch size={11} className="shrink-0 text-zinc-500" />
-      <span className="truncate">{branch.name.split("/").pop() ?? branch.name}</span>
+      <span className="truncate">
+        {branch.name.split("/").pop() ?? branch.name}
+      </span>
+      <span className="ml-auto">
+        <StatusPills ahead={branch.ahead} behind={branch.behind} size="xs" />
+      </span>
     </button>
   );
 }

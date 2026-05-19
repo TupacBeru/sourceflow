@@ -23,14 +23,34 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
             BranchType::Remote => BranchKind::Remote,
         };
         let is_head = matches!(&head_name, Some(h) if h == &name) && kind == BranchKind::Local;
-        let upstream = if kind == BranchKind::Local {
-            b.upstream()
-                .ok()
-                .and_then(|u| u.name().ok().flatten().map(String::from))
+        let local_target = b.get().target();
+
+        // Only local branches with a configured upstream get ahead/behind
+        // counts; for remote-tracking branches the comparison doesn't apply,
+        // and computing it for unattached locals would be meaningless.
+        let (upstream, ahead, behind) = if kind == BranchKind::Local {
+            match b.upstream() {
+                Ok(u) => {
+                    let upstream_name = u
+                        .name()
+                        .ok()
+                        .flatten()
+                        .map(String::from);
+                    let upstream_target = u.get().target();
+                    let (ahead, behind) = match (local_target, upstream_target) {
+                        (Some(l), Some(r)) => repo
+                            .graph_ahead_behind(l, r)
+                            .unwrap_or((0, 0)),
+                        _ => (0, 0),
+                    };
+                    (upstream_name, ahead, behind)
+                }
+                Err(_) => (None, 0, 0),
+            }
         } else {
-            None
+            (None, 0, 0)
         };
-        let target_sha = b.get().target().map(|oid| oid.to_string());
+        let target_sha = local_target.map(|oid| oid.to_string());
 
         out.push(BranchInfo {
             name,
@@ -39,6 +59,8 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
             is_head,
             upstream,
             target_sha,
+            ahead,
+            behind,
         });
     }
 

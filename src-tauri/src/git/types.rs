@@ -70,6 +70,12 @@ pub struct BranchInfo {
     pub is_head: bool,
     pub upstream: Option<String>,
     pub target_sha: Option<String>,
+    /// Commits this branch has that its upstream does not (only meaningful
+    /// for local branches with an upstream; `0` otherwise).
+    pub ahead: usize,
+    /// Commits the upstream has that this branch does not. `0` if no upstream
+    /// is configured or the branch is fully up-to-date.
+    pub behind: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { BackgroundFetcher } from "@/components/BackgroundFetcher";
 import { EmptyState } from "@/components/EmptyState";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { TabBar } from "@/components/Tabs/TabBar";
@@ -9,6 +10,7 @@ import { ViewSwitcher } from "@/components/ViewSwitcher";
 import { HistoryView } from "@/components/History/HistoryView";
 import { WorkingCopyView } from "@/components/WorkingCopy/WorkingCopyView";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { useResizableSplit } from "@/lib/useResizableSplit";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export default function App() {
@@ -17,12 +19,26 @@ export default function App() {
   const active = useActiveTab();
   const view = active?.view ?? "history";
 
+  // Sidebar (branches) resize. Default 18rem = previous fixed `w-72`.
+  const {
+    containerRef: workspaceRef,
+    sizeStyle: sidebarStyle,
+    handleProps: sidebarSplit,
+  } = useResizableSplit({
+    side: "left",
+    defaultFraction: 0.22,
+    minSize: 200,
+    maxFraction: 0.5,
+    storageKey: "sourceflow:sidebarWidth",
+  });
+
   useEffect(() => {
     void init();
   }, [init]);
 
   return (
     <div className="flex h-full w-full flex-col bg-zinc-950">
+      <BackgroundFetcher />
       <TitleBar />
       {tabs.length > 0 && <TabBar />}
       {active ? (
@@ -30,8 +46,9 @@ export default function App() {
           <Toolbar />
           <ViewSwitcher />
           <ErrorBanner />
-          <div className="flex min-h-0 flex-1">
-            <Sidebar />
+          <div ref={workspaceRef} className="flex min-h-0 flex-1">
+            <Sidebar style={sidebarStyle} />
+            <div {...sidebarSplit} title="Drag to resize sidebar" />
             <main className="flex min-h-0 flex-1 flex-col">
               {view === "history" ? <HistoryView /> : <WorkingCopyView />}
             </main>
