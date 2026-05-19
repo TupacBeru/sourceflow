@@ -94,6 +94,8 @@ export interface AheadBehind {
   upstream: string | null;
 }
 
+export type ResetMode = "soft" | "mixed" | "hard";
+
 export interface DiffPayload {
   path: string;
   old_path: string | null;

@@ -149,9 +149,8 @@ sourceflow/
    - Branch/tag badges on commit nodes
    - Click branch badge to checkout
    - Virtualized rendering for 10k+ commits
-3. **Hunk-level staging** in DiffPanel
-   - Per-hunk Stage/Unstage buttons
-   - Per-line stage (build partial patch and apply via libgit2)
+3. ~~**Hunk-level staging** in DiffPanel~~ → moved to Phase 3 (file-level
+   staging covers the daily-driver flow; hunk staging is power-user polish).
 4. **Smart toolbar** with split-button dropdowns:
    - Pull (rebase / merge / specific branch)
    - Push (current / all / force-with-lease / tags)
@@ -172,9 +171,9 @@ sourceflow/
 
 - `src-tauri/src/commands/graph.rs` - serialized graph data for frontend
 - `src-tauri/src/commands/stash.rs`
-- `src-tauri/src/commands/merge.rs` (merge/rebase/cherry-pick)
+- `src-tauri/src/commands/ops.rs` (merge/rebase/cherry-pick/revert/reset/branch CRUD/tag)
 - `src-tauri/src/git/graph_layout.rs` - lane assignment algorithm
-- `src-tauri/src/git/patch.rs` - hunk-level patch building
+- ~~`src-tauri/src/git/patch.rs` - hunk-level patch building~~ → Phase 3
 - `src/components/Graph/` - D3 SVG renderer
 - `src/components/Tabs/`
 - `src/components/ContextMenu/`
@@ -191,33 +190,37 @@ sourceflow/
 
 ## Deliverables
 
-1. **Interactive rebase UI**
+1. **Hunk-level staging** in DiffPanel
+   - Per-hunk Stage/Unstage buttons
+   - Per-line stage (build partial patch and apply via libgit2)
+   - Reference GitHub Desktop's implementation for tricky edge cases
+2. **Interactive rebase UI**
    - Drag-to-reorder commits
    - Per-commit action dropdown (pick / squash / fixup / edit / drop / reword)
    - Live preview of resulting history
-2. **Conflict resolution helper**
+3. **Conflict resolution helper**
    - Conflicted files highlighted in sidebar
    - "Open in editor" launches user's preferred editor (configurable)
    - "Mark resolved" -> `index.add()` -> continue merge/rebase
-3. **Stash management UI** with full stash list, preview diff, apply / pop / drop
-4. **Tag management** (create lightweight + annotated, push tags, delete local + remote)
-5. **GitHub PR integration**
+4. **Stash management UI** with full stash list, preview diff, apply / pop / drop
+5. **Tag management** (create lightweight + annotated, push tags, delete local + remote)
+6. **GitHub PR integration**
    - Show PR status badges next to branches
    - Create PR from current branch (opens GitHub URL or in-app form)
    - Show CI status on commits
-6. **Search**
+7. **Search**
    - Cmd+P repo switcher across tabs
    - Cmd+F commit search by message / author / SHA / file path
-7. **Keyboard shortcuts** (full set, configurable)
+8. **Keyboard shortcuts** (full set, configurable)
    - Ctrl+Enter to commit, Ctrl+Tab to switch tab, etc.
-8. **Settings panel**
+9. **Settings panel**
    - Default pull strategy (rebase vs merge)
    - External editor / diff tool / merge tool paths
    - Theme (auto / light / dark)
    - Polling interval
-9. **File history view** - per-file commit log with blame
-10. **`.gitignore` editor** with one-click "ignore this file"
-11. **Distribution**
+10. **File history view** - per-file commit log with blame
+11. **`.gitignore` editor** with one-click "ignore this file"
+12. **Distribution**
     - RPM package for Fedora
     - Flatpak manifest
     - AppImage as fallback

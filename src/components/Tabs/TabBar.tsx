@@ -2,6 +2,10 @@ import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ChevronDown, FolderOpen, Plus, X } from "lucide-react";
 
+import {
+  ContextMenu,
+  type ContextMenuItem,
+} from "@/components/ContextMenu/ContextMenu";
 import { cn } from "@/lib/cn";
 import { isDirty, useRepo, type TabState } from "@/store/repoStore";
 
@@ -60,6 +64,7 @@ export function TabBar() {
             dragging={draggingId === tab.id}
             insertLeft={dragOver?.id === tab.id && dragOver.side === "left"}
             insertRight={dragOver?.id === tab.id && dragOver.side === "right"}
+            menuItems={() => buildTabMenu(tab, tabs, closeTab)}
             onClick={() => setActiveTab(tab.id)}
             onClose={() => void closeTab(tab.id)}
             onDragStart={(e) => {
@@ -137,6 +142,7 @@ interface TabItemProps {
   dragging: boolean;
   insertLeft: boolean;
   insertRight: boolean;
+  menuItems: () => ContextMenuItem[];
   onClick: () => void;
   onClose: () => void;
   onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -152,6 +158,7 @@ function TabItem({
   dragging,
   insertLeft,
   insertRight,
+  menuItems,
   onClick,
   onClose,
   onDragStart,
@@ -162,6 +169,7 @@ function TabItem({
 }: TabItemProps) {
   const dirty = isDirty(tab.status);
   return (
+    <ContextMenu items={menuItems}>
     <div
       draggable
       onDragStart={onDragStart}
@@ -238,7 +246,42 @@ function TabItem({
         <X size={14} />
       </button>
     </div>
+    </ContextMenu>
   );
+}
+
+function buildTabMenu(
+  tab: TabState,
+  tabs: TabState[],
+  closeTab: (id: string) => Promise<void>,
+): ContextMenuItem[] {
+  const others = tabs.filter((t) => t.id !== tab.id);
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* ignore */
+    }
+  };
+  return [
+    {
+      label: "Close tab",
+      shortcut: "Mid-click",
+      onClick: () => void closeTab(tab.id),
+    },
+    {
+      label: `Close other tabs (${others.length})`,
+      disabled: others.length === 0,
+      onClick: () => {
+        for (const t of others) void closeTab(t.id);
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Copy repo path",
+      onClick: () => void copy(tab.path),
+    },
+  ];
 }
 
 function RecentlyClosedMenu({

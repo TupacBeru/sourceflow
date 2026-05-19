@@ -8,12 +8,17 @@ import {
   Cloud,
   Folder,
   GitBranch,
+  Plus,
 } from "lucide-react";
 
+import {
+  ContextMenu,
+  type ContextMenuItem,
+} from "@/components/ContextMenu/ContextMenu";
 import { cn } from "@/lib/cn";
-import { api } from "@/lib/tauri";
 import type { BranchInfo } from "@/lib/types";
-import { useActiveTab, useRepo } from "@/store/repoStore";
+import { useGitActions, type GitActions } from "@/lib/useGitActions";
+import { useActiveTab } from "@/store/repoStore";
 
 interface TreeNode {
   name: string;
@@ -81,8 +86,6 @@ function pathToHead(branches: BranchInfo[]): Set<string> {
 
 export function Sidebar({ style }: { style?: CSSProperties }) {
   const active = useActiveTab();
-  const withBusy = useRepo((s) => s.withBusy);
-  const reloadAll = useRepo((s) => s.reloadAll);
 
   const [openSections, setOpenSections] = useState({
     local: true,
@@ -106,18 +109,17 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
     () => pathToHead(active?.branches ?? []),
     [active?.branches],
   );
+  const headBranch = useMemo(
+    () => (active?.branches ?? []).find((b) => b.is_head) ?? null,
+    [active?.branches],
+  );
+
+  // Hook is called unconditionally; harmless empty string when no tab.
+  const actions = useGitActions(active?.id ?? "");
 
   if (!active) return null;
-  const tabId = active.id;
 
-  const checkout = async (b: BranchInfo) => {
-    const target =
-      b.kind === "remote" ? b.name.replace(/^[^/]+\//, "") : b.name;
-    await withBusy(`Checking out ${target}...`, () =>
-      api.checkoutBranch(tabId, target),
-    );
-    await reloadAll(tabId);
-  };
+  const checkout = (b: BranchInfo) => void actions.checkoutBranch(b.name);
 
   const toggleFolder = (
     set: Set<string>,
@@ -154,6 +156,11 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
         onToggle={() =>
           setOpenSections((s) => ({ ...s, local: !s.local }))
         }
+        action={{
+          icon: <Plus size={12} />,
+          title: "New branch from HEAD",
+          onClick: () => void actions.newBranchFrom(null),
+        }}
       >
         {localTree.children.length === 0 ? (
           <Empty text="No local branches" />
@@ -168,6 +175,8 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
                 toggleFolder(toggledLocal, setToggledLocal, p)
               }
               onActivate={(b) => void checkout(b)}
+              actions={actions}
+              headBranch={headBranch}
             />
           ))
         )}
@@ -195,6 +204,8 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
                 toggleFolder(toggledRemote, setToggledRemote, p)
               }
               onActivate={(b) => void checkout(b)}
+              actions={actions}
+              headBranch={headBranch}
             />
           ))
         )}
@@ -234,6 +245,7 @@ function Section({
   open,
   onToggle,
   children,
+  action,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -241,18 +253,35 @@ function Section({
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+  action?: {
+    icon: React.ReactNode;
+    title: string;
+    onClick: () => void;
+  };
 }) {
   return (
     <div className="border-b border-zinc-800/60 py-1">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-200"
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {icon}
-        <span className="flex-1 text-left">{label}</span>
-        <span className="text-zinc-600">{count}</span>
-      </button>
+      <div className="group flex w-full items-center px-3 py-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-200">
+        <button
+          onClick={onToggle}
+          className="flex flex-1 items-center gap-2 text-left"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {icon}
+          <span className="flex-1 text-left">{label}</span>
+          <span className="text-zinc-600">{count}</span>
+        </button>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            title={action.title}
+            className="ml-2 rounded p-0.5 text-zinc-500 opacity-0 hover:bg-zinc-800 hover:text-zinc-200 group-hover:opacity-100"
+          >
+            {action.icon}
+          </button>
+        )}
+      </div>
       {open && <div className="py-1">{children}</div>}
     </div>
   );
@@ -267,12 +296,16 @@ function TreeBranch({
   isOpen,
   onToggle,
   onActivate,
+  actions,
+  headBranch,
 }: {
   node: TreeNode;
   depth: number;
   isOpen: (path: string, depth: number) => boolean;
   onToggle: (path: string) => void;
   onActivate: (branch: BranchInfo) => void;
+  actions: GitActions;
+  headBranch: BranchInfo | null;
 }) {
   const isFolder = node.children.length > 0;
   const isLeafOnly = !isFolder && node.branch;
@@ -284,6 +317,8 @@ function TreeBranch({
         branch={node.branch!}
         padLeft={padLeft}
         onActivate={() => onActivate(node.branch!)}
+        actions={actions}
+        headBranch={headBranch}
       />
     );
   }
@@ -291,40 +326,50 @@ function TreeBranch({
   const open = isOpen(node.fullPath, depth);
   const aggregate = aggregateStatus(node);
 
+  const folderButton = (
+    <button
+      onClick={() => onToggle(node.fullPath)}
+      onDoubleClick={
+        node.branch ? () => onActivate(node.branch!) : undefined
+      }
+      className={cn(
+        "flex w-full items-center gap-1.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-800/50",
+        node.branch?.is_head && "bg-zinc-800/70 font-semibold text-zinc-50",
+      )}
+      style={{ paddingLeft: padLeft, paddingRight: 12 }}
+      title={node.fullPath}
+    >
+      {open ? (
+        <ChevronDown size={11} className="shrink-0 text-zinc-500" />
+      ) : (
+        <ChevronRight size={11} className="shrink-0 text-zinc-500" />
+      )}
+      <Folder size={12} className="shrink-0 text-zinc-500" />
+      <span className="truncate">{node.name}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
+        {!open && (
+          <StatusPills
+            ahead={aggregate.ahead}
+            behind={aggregate.behind}
+            size="xs"
+          />
+        )}
+        <span className="text-[10px] text-zinc-600">{countLeaves(node)}</span>
+      </span>
+    </button>
+  );
+
   return (
     <>
-      <button
-        onClick={() => onToggle(node.fullPath)}
-        onDoubleClick={
-          node.branch ? () => onActivate(node.branch!) : undefined
-        }
-        className={cn(
-          "flex w-full items-center gap-1.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-800/50",
-          node.branch?.is_head && "bg-zinc-800/70 font-semibold text-zinc-50",
-        )}
-        style={{ paddingLeft: padLeft, paddingRight: 12 }}
-        title={node.fullPath}
-      >
-        {open ? (
-          <ChevronDown size={11} className="shrink-0 text-zinc-500" />
-        ) : (
-          <ChevronRight size={11} className="shrink-0 text-zinc-500" />
-        )}
-        <Folder size={12} className="shrink-0 text-zinc-500" />
-        <span className="truncate">{node.name}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
-          {/* When the folder is collapsed, surface its aggregated ahead/behind so
-              you don't have to expand every group to know there's work to do. */}
-          {!open && (
-            <StatusPills
-              ahead={aggregate.ahead}
-              behind={aggregate.behind}
-              size="xs"
-            />
-          )}
-          <span className="text-[10px] text-zinc-600">{countLeaves(node)}</span>
-        </span>
-      </button>
+      {node.branch ? (
+        // Some refs (e.g. "wip" with sub-branches "wip/a", "wip/b") render
+        // both as a folder and as a leaf - give them the same context menu.
+        <ContextMenu items={() => branchMenuItems(node.branch!, actions, headBranch)}>
+          {folderButton}
+        </ContextMenu>
+      ) : (
+        folderButton
+      )}
       {open &&
         node.children.map((child) => (
           <TreeBranch
@@ -334,6 +379,8 @@ function TreeBranch({
             isOpen={isOpen}
             onToggle={onToggle}
             onActivate={onActivate}
+            actions={actions}
+            headBranch={headBranch}
           />
         ))}
     </>
@@ -409,34 +456,128 @@ function BranchRow({
   branch,
   padLeft,
   onActivate,
+  actions,
+  headBranch,
 }: {
   branch: BranchInfo;
   padLeft: number;
   onActivate: () => void;
+  actions: GitActions;
+  headBranch: BranchInfo | null;
 }) {
   return (
-    <button
-      onDoubleClick={onActivate}
-      className={cn(
-        "flex w-full items-center gap-1.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-800/50",
-        branch.is_head && "bg-zinc-800/70 font-semibold text-zinc-50",
-      )}
-      style={{ paddingLeft: padLeft, paddingRight: 12 }}
-      title={`${branch.full_ref}\nDouble-click to checkout`}
-    >
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
-        style={{ opacity: branch.is_head ? 1 : 0 }}
-      />
-      <GitBranch size={11} className="shrink-0 text-zinc-500" />
-      <span className="truncate">
-        {branch.name.split("/").pop() ?? branch.name}
-      </span>
-      <span className="ml-auto">
-        <StatusPills ahead={branch.ahead} behind={branch.behind} size="xs" />
-      </span>
-    </button>
+    <ContextMenu items={() => branchMenuItems(branch, actions, headBranch)}>
+      <button
+        onDoubleClick={onActivate}
+        className={cn(
+          "flex w-full items-center gap-1.5 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-800/50",
+          branch.is_head && "bg-zinc-800/70 font-semibold text-zinc-50",
+        )}
+        style={{ paddingLeft: padLeft, paddingRight: 12 }}
+        title={`${branch.full_ref}\nDouble-click to checkout · Right-click for actions`}
+      >
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+          style={{ opacity: branch.is_head ? 1 : 0 }}
+        />
+        <GitBranch size={11} className="shrink-0 text-zinc-500" />
+        <span className="truncate">
+          {branch.name.split("/").pop() ?? branch.name}
+        </span>
+        <span className="ml-auto">
+          <StatusPills ahead={branch.ahead} behind={branch.behind} size="xs" />
+        </span>
+      </button>
+    </ContextMenu>
   );
+}
+
+/** Build the right-click menu for a branch row. */
+function branchMenuItems(
+  branch: BranchInfo,
+  actions: GitActions,
+  head: BranchInfo | null,
+): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [];
+  const isRemote = branch.kind === "remote";
+  // Remote refs in the sidebar come as "origin/foo"; the libgit2 helpers
+  // want the bare local-style name.
+  const localName = isRemote
+    ? branch.name.replace(/^[^/]+\//, "")
+    : branch.name;
+  const remoteName = isRemote ? branch.name.split("/")[0] : null;
+  const headLabel = head?.name ?? "current";
+
+  if (!branch.is_head) {
+    items.push({
+      label: isRemote
+        ? `Check out '${localName}' (creates local tracking branch)`
+        : `Check out '${branch.name}'`,
+      onClick: () => void actions.checkoutBranch(branch.name),
+    });
+  }
+
+  if (head && !branch.is_head) {
+    items.push({
+      label: `Merge '${localName}' into '${headLabel}'`,
+      onClick: () => void actions.mergeBranch(localName, headLabel),
+    });
+    items.push({
+      label: `Rebase '${headLabel}' onto '${localName}'`,
+      onClick: () => void actions.rebaseOnto(localName, headLabel),
+    });
+  }
+
+  items.push({ type: "separator" });
+  items.push({
+    label: `New branch from '${branch.name}'…`,
+    onClick: () =>
+      void actions.newBranchFrom(
+        // For remote, pass the remote ref name as start point so the new
+        // branch starts at the remote's current tip.
+        branch.target_sha,
+        isRemote ? localName : undefined,
+      ),
+  });
+
+  if (!isRemote) {
+    items.push({ type: "separator" });
+    items.push({
+      label: branch.upstream
+        ? `Push '${branch.name}' → ${branch.upstream}`
+        : `Push '${branch.name}' → origin (set upstream)`,
+      onClick: () =>
+        void actions.pushBranch(branch.name, Boolean(branch.upstream)),
+    });
+    items.push({
+      label: `Rename '${branch.name}'…`,
+      onClick: () => void actions.renameBranch(branch.name),
+    });
+    if (!branch.is_head) {
+      items.push({
+        label: `Delete '${branch.name}'…`,
+        danger: true,
+        onClick: () => void actions.deleteBranch(branch.name),
+      });
+    }
+  }
+
+  items.push({ type: "separator" });
+  items.push({
+    label: "Copy branch name",
+    onClick: () => void actions.copy(isRemote ? branch.full_ref : branch.name),
+  });
+  if (branch.target_sha) {
+    items.push({
+      label: `Copy tip SHA (${branch.target_sha.slice(0, 7)})`,
+      onClick: () => void actions.copy(branch.target_sha!),
+    });
+  }
+  // Avoid surfacing the remote name in the menu when we don't actually use
+  // it (lint quiet-down + future-proofing the variable).
+  void remoteName;
+
+  return items;
 }
 
 function Empty({ text }: { text: string }) {

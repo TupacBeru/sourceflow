@@ -5,6 +5,7 @@
 
 pub mod credentials;
 pub mod graph;
+pub mod ops;
 pub mod refs;
 pub mod remote;
 pub mod repo;

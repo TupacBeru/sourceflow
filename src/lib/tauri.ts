@@ -9,6 +9,7 @@ import type {
   PersistedState,
   PersistedTab,
   RepoSummary,
+  ResetMode,
   StashInfo,
   WorkingStatus,
 } from "./types";
@@ -62,6 +63,75 @@ export const api = {
   pushCurrent: (tabId: string) => tauriInvoke<null>("push_current", { tabId }),
   aheadBehind: (tabId: string) =>
     tauriInvoke<AheadBehind>("ahead_behind", { tabId }),
+
+  // Ops: branch CRUD
+  createBranch: (
+    tabId: string,
+    name: string,
+    startPoint: string | null,
+    checkout: boolean,
+  ) =>
+    tauriInvoke<null>("create_branch", {
+      tabId,
+      name,
+      startPoint,
+      checkout,
+    }),
+  renameBranch: (tabId: string, oldName: string, newName: string, force: boolean) =>
+    tauriInvoke<null>("rename_branch", {
+      tabId,
+      old: oldName,
+      new: newName,
+      force,
+    }),
+  deleteBranch: (tabId: string, name: string) =>
+    tauriInvoke<null>("delete_branch", { tabId, name }),
+  setUpstream: (tabId: string, branch: string, upstream: string | null) =>
+    tauriInvoke<null>("set_upstream", { tabId, branch, upstream }),
+
+  // Ops: tags
+  createTag: (
+    tabId: string,
+    name: string,
+    targetSha: string | null,
+    message: string | null,
+  ) =>
+    tauriInvoke<null>("create_tag", {
+      tabId,
+      name,
+      targetSha,
+      message,
+    }),
+
+  // Ops: checkout / reset
+  checkoutSha: (tabId: string, sha: string) =>
+    tauriInvoke<null>("checkout_sha", { tabId, sha }),
+  resetTo: (tabId: string, sha: string, mode: ResetMode) =>
+    tauriInvoke<null>("reset_to", { tabId, sha, mode }),
+
+  // Ops: merge / rebase / cherry-pick / revert
+  mergeBranch: (tabId: string, branch: string) =>
+    tauriInvoke<null>("merge_branch", { tabId, branch }),
+  abortMerge: (tabId: string) => tauriInvoke<null>("abort_merge", { tabId }),
+  rebaseOnto: (tabId: string, onto: string) =>
+    tauriInvoke<null>("rebase_onto", { tabId, onto }),
+  abortRebase: (tabId: string) => tauriInvoke<null>("abort_rebase", { tabId }),
+  cherryPick: (tabId: string, sha: string) =>
+    tauriInvoke<null>("cherry_pick", { tabId, sha }),
+  revertCommit: (tabId: string, sha: string) =>
+    tauriInvoke<null>("revert_commit", { tabId, sha }),
+
+  // Ops: push specific branch
+  pushBranch: (
+    tabId: string,
+    branch: string,
+    setUpstreamRemote: string | null,
+  ) =>
+    tauriInvoke<null>("push_branch", {
+      tabId,
+      branch,
+      setUpstreamRemote,
+    }),
 
   // Auth
   startGithubOauth: () =>
