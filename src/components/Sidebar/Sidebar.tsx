@@ -4,29 +4,33 @@ import { Archive, ChevronDown, ChevronRight, GitBranch, Cloud } from "lucide-rea
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import type { BranchInfo } from "@/lib/types";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export function Sidebar() {
-  const branches = useRepo((s) => s.branches);
-  const stashes = useRepo((s) => s.stashes);
+  const active = useActiveTab();
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
 
   const [open, setOpen] = useState({ local: true, remote: true, stash: true });
 
   const local = useMemo(
-    () => branches.filter((b) => b.kind === "local"),
-    [branches],
+    () => (active?.branches ?? []).filter((b) => b.kind === "local"),
+    [active?.branches],
   );
   const remote = useMemo(
-    () => branches.filter((b) => b.kind === "remote"),
-    [branches],
+    () => (active?.branches ?? []).filter((b) => b.kind === "remote"),
+    [active?.branches],
   );
+
+  if (!active) return null;
+  const tabId = active.id;
 
   const checkout = async (b: BranchInfo) => {
     const target = b.kind === "remote" ? b.name.replace(/^[^/]+\//, "") : b.name;
-    await withBusy(`Checking out ${target}...`, () => api.checkoutBranch(target));
-    await reloadAll();
+    await withBusy(`Checking out ${target}...`, () =>
+      api.checkoutBranch(tabId, target),
+    );
+    await reloadAll(tabId);
   };
 
   return (
@@ -60,11 +64,11 @@ export function Sidebar() {
       <Section
         label="Stashes"
         icon={<Archive size={14} />}
-        count={stashes.length}
+        count={active.stashes.length}
         open={open.stash}
         onToggle={() => setOpen((s) => ({ ...s, stash: !s.stash }))}
       >
-        {stashes.map((s) => (
+        {active.stashes.map((s) => (
           <div
             key={s.sha}
             className="px-6 py-1 text-xs text-zinc-300"
@@ -74,7 +78,7 @@ export function Sidebar() {
             <span className="truncate">{s.message}</span>
           </div>
         ))}
-        {stashes.length === 0 && <Empty text="No stashes" />}
+        {active.stashes.length === 0 && <Empty text="No stashes" />}
       </Section>
     </aside>
   );
@@ -128,7 +132,10 @@ function BranchRow({
       )}
       title={branch.full_ref}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" style={{ opacity: branch.is_head ? 1 : 0 }} />
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+        style={{ opacity: branch.is_head ? 1 : 0 }}
+      />
       <span className="truncate">{branch.name}</span>
     </button>
   );

@@ -2,18 +2,20 @@ import { useEffect } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
+import { TabBar } from "@/components/Tabs/TabBar";
 import { TitleBar } from "@/components/TitleBar";
 import { Toolbar } from "@/components/Toolbar/Toolbar";
 import { ViewSwitcher } from "@/components/ViewSwitcher";
 import { HistoryView } from "@/components/History/HistoryView";
 import { WorkingCopyView } from "@/components/WorkingCopy/WorkingCopyView";
 import { ErrorBanner } from "@/components/ErrorBanner";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export default function App() {
   const init = useRepo((s) => s.init);
-  const repo = useRepo((s) => s.repo);
-  const view = useRepo((s) => s.view);
+  const tabs = useRepo((s) => s.tabs);
+  const active = useActiveTab();
+  const view = active?.view ?? "history";
 
   useEffect(() => {
     void init();
@@ -22,7 +24,8 @@ export default function App() {
   return (
     <div className="flex h-full w-full flex-col bg-zinc-950">
       <TitleBar />
-      {repo ? (
+      {tabs.length > 0 && <TabBar />}
+      {active ? (
         <>
           <Toolbar />
           <ViewSwitcher />
@@ -35,7 +38,10 @@ export default function App() {
           </div>
         </>
       ) : (
-        <EmptyState />
+        <>
+          <ErrorBanner />
+          <EmptyState />
+        </>
       )}
     </div>
   );

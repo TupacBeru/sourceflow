@@ -3,22 +3,24 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import type { DiffPayload } from "@/lib/types";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab } from "@/store/repoStore";
 
 export function DiffPanel() {
-  const sel = useRepo((s) => s.selectFile);
+  const active = useActiveTab();
+  const sel = active?.selectFile ?? null;
+  const tabId = active?.id ?? null;
   const [diff, setDiff] = useState<DiffPayload | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!sel) {
+    if (!sel || !tabId) {
       setDiff(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
     api
-      .fileDiff(sel.path, sel.staged)
+      .fileDiff(tabId, sel.path, sel.staged)
       .then((d) => {
         if (!cancelled) setDiff(d);
       })
@@ -31,7 +33,7 @@ export function DiffPanel() {
     return () => {
       cancelled = true;
     };
-  }, [sel?.path, sel?.staged]);
+  }, [tabId, sel?.path, sel?.staged]);
 
   if (!sel) {
     return (
@@ -40,7 +42,6 @@ export function DiffPanel() {
       </div>
     );
   }
-
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
@@ -48,7 +49,6 @@ export function DiffPanel() {
       </div>
     );
   }
-
   if (!diff) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
@@ -56,7 +56,6 @@ export function DiffPanel() {
       </div>
     );
   }
-
   if (diff.is_binary) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">

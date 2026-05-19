@@ -2,27 +2,31 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 
 import { api } from "@/lib/tauri";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export function CommitForm() {
   const [message, setMessage] = useState("");
   const [amend, setAmend] = useState(false);
-  const head = useRepo((s) => s.repo?.head_branch ?? "(detached)");
-  const stagedCount = useRepo((s) => s.status.staged.length);
+  const active = useActiveTab();
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
+
+  if (!active) return null;
+  const tabId = active.id;
+  const head = active.repo?.head_branch ?? "(detached)";
+  const stagedCount = active.status.staged.length;
 
   // Amend allows empty message (keeps previous) and zero staged (just rewords).
   const canCommit = amend || (message.trim().length > 0 && stagedCount > 0);
 
   const onCommit = async () => {
     const result = await withBusy("Committing...", () =>
-      api.commitChanges(message, amend),
+      api.commitChanges(tabId, message, amend),
     );
     if (result !== null) {
       setMessage("");
       setAmend(false);
-      await reloadAll();
+      await reloadAll(tabId);
     }
   };
 
@@ -39,7 +43,11 @@ export function CommitForm() {
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onKeyDown={onKey}
-        placeholder={amend ? "Amend last commit (leave empty to keep message)" : "Commit message"}
+        placeholder={
+          amend
+            ? "Amend last commit (leave empty to keep message)"
+            : "Commit message"
+        }
         rows={3}
         className="w-full resize-none rounded-md border border-zinc-700/60 bg-zinc-950 p-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-blue-600 focus:outline-none"
       />

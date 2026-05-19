@@ -43,7 +43,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::repo::open_repository,
             commands::repo::close_repository,
-            commands::repo::current_repository,
+            commands::repo::repository_summary,
             commands::repo::commit_history,
             commands::repo::working_status,
             commands::refs::list_branches,
@@ -63,7 +63,10 @@ pub fn run() {
             commands::auth::github_status,
             commands::auth::github_logout,
             commands::config_cmd::load_app_state,
-            commands::config_cmd::save_last_repo,
+            commands::config_cmd::save_app_state,
+            commands::config_cmd::save_tabs,
+            commands::config_cmd::set_active_tab,
+            commands::config_cmd::push_recently_closed,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

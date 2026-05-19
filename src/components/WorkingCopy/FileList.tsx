@@ -3,43 +3,49 @@ import { EyeOff, Minus, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import type { FileEntry } from "@/lib/types";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export function FileList() {
-  const status = useRepo((s) => s.status);
-  const selectFile = useRepo((s) => s.selectFile);
+  const active = useActiveTab();
   const setSelectFile = useRepo((s) => s.setSelectFile);
   const reloadStatus = useRepo((s) => s.reloadStatus);
   const withBusy = useRepo((s) => s.withBusy);
 
+  if (!active) return null;
+  const tabId = active.id;
+  const status = active.status;
+  const selectFile = active.selectFile;
+
   const stage = async (path: string) => {
-    await withBusy(`Staging ${path}`, () => api.stageFile(path));
-    await reloadStatus();
+    await withBusy(`Staging ${path}`, () => api.stageFile(tabId, path));
+    await reloadStatus(tabId);
   };
   const unstage = async (path: string) => {
-    await withBusy(`Unstaging ${path}`, () => api.unstageFile(path));
-    await reloadStatus();
+    await withBusy(`Unstaging ${path}`, () => api.unstageFile(tabId, path));
+    await reloadStatus(tabId);
   };
   const discard = async (path: string) => {
     if (!confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
-    await withBusy(`Discarding ${path}`, () => api.discardFile(path));
-    await reloadStatus();
+    await withBusy(`Discarding ${path}`, () => api.discardFile(tabId, path));
+    await reloadStatus(tabId);
   };
   const ignore = async (path: string) => {
-    await withBusy(`Adding ${path} to .gitignore`, () => api.ignoreFile(path));
-    await reloadStatus();
+    await withBusy(`Adding ${path} to .gitignore`, () =>
+      api.ignoreFile(tabId, path),
+    );
+    await reloadStatus(tabId);
   };
   const stageAll = async (entries: FileEntry[]) => {
     await withBusy("Staging files...", async () => {
-      for (const e of entries) await api.stageFile(e.path);
+      for (const e of entries) await api.stageFile(tabId, e.path);
     });
-    await reloadStatus();
+    await reloadStatus(tabId);
   };
   const unstageAll = async (entries: FileEntry[]) => {
     await withBusy("Unstaging files...", async () => {
-      for (const e of entries) await api.unstageFile(e.path);
+      for (const e of entries) await api.unstageFile(tabId, e.path);
     });
-    await reloadStatus();
+    await reloadStatus(tabId);
   };
 
   return (
@@ -61,7 +67,7 @@ export function FileList() {
             file={f}
             staged
             selected={selectFile?.path === f.path && selectFile.staged}
-            onSelect={() => setSelectFile({ path: f.path, staged: true })}
+            onSelect={() => setSelectFile(tabId, { path: f.path, staged: true })}
             onPrimary={() => void unstage(f.path)}
             primaryIcon={<Minus size={12} />}
             primaryTitle="Unstage"
@@ -87,7 +93,9 @@ export function FileList() {
             file={f}
             staged={false}
             selected={selectFile?.path === f.path && !selectFile.staged}
-            onSelect={() => setSelectFile({ path: f.path, staged: false })}
+            onSelect={() =>
+              setSelectFile(tabId, { path: f.path, staged: false })
+            }
             onPrimary={() => void stage(f.path)}
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
@@ -137,7 +145,9 @@ export function FileList() {
             file={f}
             staged={false}
             selected={selectFile?.path === f.path && !selectFile.staged}
-            onSelect={() => setSelectFile({ path: f.path, staged: false })}
+            onSelect={() =>
+              setSelectFile(tabId, { path: f.path, staged: false })
+            }
             onPrimary={() => void stage(f.path)}
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
@@ -277,7 +287,9 @@ function describe(s: FileEntry["status"], staged: boolean) {
     case "index_modified":
       return {
         letter: "M",
-        color: staged ? "bg-amber-700 text-amber-100" : "bg-amber-900/60 text-amber-200",
+        color: staged
+          ? "bg-amber-700 text-amber-100"
+          : "bg-amber-900/60 text-amber-200",
       };
     case "worktree_deleted":
     case "index_deleted":
@@ -313,5 +325,7 @@ function ActionButton({
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="px-3 py-1 text-[11px] italic text-zinc-600">{text}</div>;
+  return (
+    <div className="px-3 py-1 text-[11px] italic text-zinc-600">{text}</div>
+  );
 }

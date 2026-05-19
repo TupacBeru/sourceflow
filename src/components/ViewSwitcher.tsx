@@ -1,21 +1,28 @@
 import { History, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/cn";
-import { isDirty, useRepo } from "@/store/repoStore";
+import { isDirty, useActiveTab, useRepo } from "@/store/repoStore";
 
 export function ViewSwitcher() {
-  const view = useRepo((s) => s.view);
+  const active = useActiveTab();
   const setView = useRepo((s) => s.setView);
-  const dirty = useRepo((s) => isDirty(s.status));
+  if (!active) return null;
+
+  const dirty = isDirty(active.status);
+  const view = active.view;
 
   return (
     <div className="flex items-center gap-1 border-b border-zinc-800 bg-zinc-900/40 px-2 py-1">
-      <Tab active={view === "history"} onClick={() => setView("history")} icon={<History size={14} />}>
+      <Tab
+        active={view === "history"}
+        onClick={() => setView(active.id, "history")}
+        icon={<History size={14} />}
+      >
         Commit History
       </Tab>
       <Tab
         active={view === "working"}
-        onClick={() => setView("working")}
+        onClick={() => setView(active.id, "working")}
         icon={<Pencil size={14} />}
         dot={dirty}
       >

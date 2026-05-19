@@ -13,9 +13,6 @@ pub enum AppError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("no repository is open")]
-    NoRepoOpen,
-
     #[error("path is not a git repository: {0}")]
     NotARepo(String),
 
@@ -61,7 +58,6 @@ impl Serialize for AppError {
         let kind = match self {
             AppError::Git(_) => "git",
             AppError::Io(_) => "io",
-            AppError::NoRepoOpen => "no_repo_open",
             AppError::NotARepo(_) => "not_a_repo",
             AppError::Network(_) => "network",
             AppError::Oauth(_) => "oauth",

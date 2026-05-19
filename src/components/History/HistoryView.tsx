@@ -3,25 +3,26 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { cn } from "@/lib/cn";
 import { relativeTime } from "@/lib/format";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 const ROW_HEIGHT = 56;
 
 export function HistoryView() {
-  const commits = useRepo((s) => s.commits);
-  const selected = useRepo((s) => s.selectedCommit);
+  const active = useActiveTab();
   const setSelected = useRepo((s) => s.setSelectedCommit);
 
   const parentRef = useRef<HTMLDivElement | null>(null);
 
   const virtualizer = useVirtualizer({
-    count: commits.length,
+    count: active?.commits.length ?? 0,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 12,
   });
 
-  if (commits.length === 0) {
+  if (!active) return null;
+
+  if (active.commits.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
         No commits yet
@@ -33,16 +34,20 @@ export function HistoryView() {
   return (
     <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin">
       <div
-        style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}
+        style={{
+          height: virtualizer.getTotalSize(),
+          width: "100%",
+          position: "relative",
+        }}
       >
         {items.map((row) => {
-          const c = commits[row.index];
+          const c = active.commits[row.index];
           if (!c) return null;
-          const isSelected = c.sha === selected;
+          const isSelected = c.sha === active.selectedCommit;
           return (
             <button
               key={c.sha}
-              onClick={() => setSelected(c.sha)}
+              onClick={() => setSelected(active.id, c.sha)}
               className={cn(
                 "absolute left-0 top-0 flex w-full items-center gap-3 border-b border-zinc-800/60 px-4 text-left text-xs transition-colors",
                 isSelected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
@@ -52,7 +57,9 @@ export function HistoryView() {
                 transform: `translateY(${row.start}px)`,
               }}
             >
-              <span className="font-mono text-[11px] text-zinc-500">{c.short_sha}</span>
+              <span className="font-mono text-[11px] text-zinc-500">
+                {c.short_sha}
+              </span>
               <div className="flex-1 overflow-hidden">
                 <div className="flex items-center gap-2">
                   {c.refs.map((r) => (

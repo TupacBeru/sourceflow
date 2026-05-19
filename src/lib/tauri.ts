@@ -5,46 +5,58 @@ import type {
   CommitInfo,
   DiffPayload,
   GithubStatus,
+  PersistedState,
+  PersistedTab,
   RepoSummary,
   StashInfo,
   WorkingStatus,
 } from "./types";
 
 // Typed wrappers around `invoke` so the rest of the app never sees
-// stringly-typed command names.
+// stringly-typed command names. Every repo/stage/remote operation takes
+// a `tabId` to disambiguate which open repository it targets.
 
 export const api = {
   // Repo
-  openRepository: (path: string) =>
-    tauriInvoke<RepoSummary>("open_repository", { path }),
-  closeRepository: () => tauriInvoke<null>("close_repository"),
-  currentRepository: () =>
-    tauriInvoke<RepoSummary | null>("current_repository"),
-  commitHistory: (limit?: number) =>
-    tauriInvoke<CommitInfo[]>("commit_history", { limit }),
-  workingStatus: () => tauriInvoke<WorkingStatus>("working_status"),
+  openRepository: (tabId: string, path: string) =>
+    tauriInvoke<RepoSummary>("open_repository", { tabId, path }),
+  closeRepository: (tabId: string) =>
+    tauriInvoke<null>("close_repository", { tabId }),
+  repositorySummary: (tabId: string) =>
+    tauriInvoke<RepoSummary | null>("repository_summary", { tabId }),
+  commitHistory: (tabId: string, limit?: number) =>
+    tauriInvoke<CommitInfo[]>("commit_history", { tabId, limit }),
+  workingStatus: (tabId: string) =>
+    tauriInvoke<WorkingStatus>("working_status", { tabId }),
 
   // Refs
-  listBranches: () => tauriInvoke<BranchInfo[]>("list_branches"),
-  listStashes: () => tauriInvoke<StashInfo[]>("list_stashes"),
-  checkoutBranch: (branch: string) =>
-    tauriInvoke<null>("checkout_branch", { branch }),
+  listBranches: (tabId: string) =>
+    tauriInvoke<BranchInfo[]>("list_branches", { tabId }),
+  listStashes: (tabId: string) =>
+    tauriInvoke<StashInfo[]>("list_stashes", { tabId }),
+  checkoutBranch: (tabId: string, branch: string) =>
+    tauriInvoke<null>("checkout_branch", { tabId, branch }),
 
   // Stage
-  stageFile: (path: string) => tauriInvoke<null>("stage_file", { path }),
-  unstageFile: (path: string) => tauriInvoke<null>("unstage_file", { path }),
-  discardFile: (path: string) => tauriInvoke<null>("discard_file", { path }),
-  ignoreFile: (path: string) => tauriInvoke<null>("ignore_file", { path }),
-  fileDiff: (path: string, staged: boolean) =>
-    tauriInvoke<DiffPayload>("file_diff", { path, staged }),
-  commitChanges: (message: string, amend: boolean) =>
-    tauriInvoke<string>("commit_changes", { message, amend }),
+  stageFile: (tabId: string, path: string) =>
+    tauriInvoke<null>("stage_file", { tabId, path }),
+  unstageFile: (tabId: string, path: string) =>
+    tauriInvoke<null>("unstage_file", { tabId, path }),
+  discardFile: (tabId: string, path: string) =>
+    tauriInvoke<null>("discard_file", { tabId, path }),
+  ignoreFile: (tabId: string, path: string) =>
+    tauriInvoke<null>("ignore_file", { tabId, path }),
+  fileDiff: (tabId: string, path: string, staged: boolean) =>
+    tauriInvoke<DiffPayload>("file_diff", { tabId, path, staged }),
+  commitChanges: (tabId: string, message: string, amend: boolean) =>
+    tauriInvoke<string>("commit_changes", { tabId, message, amend }),
 
   // Remote
-  fetchAll: () => tauriInvoke<null>("fetch_all"),
-  pullCurrent: () => tauriInvoke<null>("pull_current"),
-  pushCurrent: () => tauriInvoke<null>("push_current"),
-  aheadBehind: () => tauriInvoke<AheadBehind>("ahead_behind"),
+  fetchAll: (tabId: string) => tauriInvoke<null>("fetch_all", { tabId }),
+  pullCurrent: (tabId: string) => tauriInvoke<null>("pull_current", { tabId }),
+  pushCurrent: (tabId: string) => tauriInvoke<null>("push_current", { tabId }),
+  aheadBehind: (tabId: string) =>
+    tauriInvoke<AheadBehind>("ahead_behind", { tabId }),
 
   // Auth
   startGithubOauth: () =>
@@ -53,10 +65,15 @@ export const api = {
   githubLogout: () => tauriInvoke<null>("github_logout"),
 
   // Config
-  loadAppState: () =>
-    tauriInvoke<{ last_repo_path: string | null }>("load_app_state"),
-  saveLastRepo: (path: string | null) =>
-    tauriInvoke<null>("save_last_repo", { path }),
+  loadAppState: () => tauriInvoke<PersistedState>("load_app_state"),
+  saveAppState: (state: PersistedState) =>
+    tauriInvoke<null>("save_app_state", { state }),
+  saveTabs: (tabs: PersistedTab[]) =>
+    tauriInvoke<null>("save_tabs", { tabs }),
+  setActiveTab: (tabId: string | null) =>
+    tauriInvoke<null>("set_active_tab", { tabId }),
+  pushRecentlyClosed: (path: string) =>
+    tauriInvoke<null>("push_recently_closed", { path }),
 };
 
 export type Api = typeof api;

@@ -4,8 +4,7 @@ import { useRepo } from "@/store/repoStore";
 
 export function ErrorBanner() {
   const error = useRepo((s) => s.error);
-  const setError = (msg: string | null) =>
-    useRepo.setState({ error: msg });
+  const setError = useRepo((s) => s.setError);
 
   if (!error) return null;
   return (

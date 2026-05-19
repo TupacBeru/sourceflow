@@ -5,8 +5,7 @@ import { useRepo } from "@/store/repoStore";
 
 export function EmptyState() {
   const openRepo = useRepo((s) => s.openRepo);
-  const error = useRepo((s) => s.error);
-  const loading = useRepo((s) => s.loadingRepo);
+  const recentlyClosed = useRepo((s) => s.recentlyClosed);
 
   const pick = async () => {
     const selected = await open({
@@ -27,21 +26,35 @@ export function EmptyState() {
           Open a repository
         </h1>
         <p className="mb-6 text-sm text-zinc-400">
-          Select a folder containing a Git repository to get started. SourceFlow
-          will remember your last opened repo.
+          Select a folder containing a Git repository to get started. You can
+          open multiple repositories in tabs.
         </p>
         <button
           onClick={() => void pick()}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-500 disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-500"
         >
           <FolderOpen size={16} />
-          {loading ? "Opening..." : "Choose folder"}
+          Choose folder
         </button>
-        {error && (
-          <p className="mt-4 rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-left text-xs text-red-300">
-            {error}
-          </p>
+        {recentlyClosed.length > 0 && (
+          <div className="mt-8 text-left">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              Recent
+            </div>
+            <div className="flex flex-col gap-1">
+              {recentlyClosed.slice(0, 5).map((path) => (
+                <button
+                  key={path}
+                  onClick={() => void openRepo(path)}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                  title={path}
+                >
+                  <FolderOpen size={12} className="text-zinc-500" />
+                  <span className="flex-1 truncate">{path}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

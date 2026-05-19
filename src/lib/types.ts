@@ -84,11 +84,22 @@ export interface GithubStatus {
   login: string | null;
 }
 
+export interface PersistedTab {
+  id: string;
+  path: string;
+}
+
+export interface PersistedState {
+  tabs: PersistedTab[];
+  active_tab_id: string | null;
+  recently_closed: string[];
+  last_repo_path: string | null;
+}
+
 export interface AppError {
   kind:
     | "git"
     | "io"
-    | "no_repo_open"
     | "not_a_repo"
     | "network"
     | "oauth"

@@ -15,6 +15,7 @@ interface DeviceInfo {
 export function ConnectGitHub() {
   const github = useRepo((s) => s.github);
   const reloadGithub = useRepo((s) => s.reloadGithub);
+  const setError = useRepo((s) => s.setError);
   const [device, setDevice] = useState<DeviceInfo | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,8 +38,11 @@ export function ConnectGitHub() {
       setDevice(null);
       await reloadGithub();
     } catch (e) {
-      const msg = e && typeof e === "object" && "message" in e ? String(e.message) : String(e);
-      useRepo.setState({ error: msg });
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? String(e.message)
+          : String(e);
+      setError(msg);
       setDevice(null);
     } finally {
       setBusy(false);

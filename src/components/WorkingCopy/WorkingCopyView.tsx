@@ -1,16 +1,20 @@
 import { useEffect } from "react";
 
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 import { FileList } from "./FileList";
 import { DiffPanel } from "./DiffPanel";
 import { CommitForm } from "./CommitForm";
 
 export function WorkingCopyView() {
+  const active = useActiveTab();
   const reloadStatus = useRepo((s) => s.reloadStatus);
+
   useEffect(() => {
-    void reloadStatus();
-  }, [reloadStatus]);
+    if (active) void reloadStatus(active.id);
+  }, [active?.id, reloadStatus]);
+
+  if (!active) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

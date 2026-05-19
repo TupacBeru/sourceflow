@@ -7,24 +7,36 @@ use crate::git;
 use crate::git::types::{CommitInfo, RepoSummary, WorkingStatus};
 use crate::state::AppState;
 
+/// Open a repository and register it under a frontend-provided tab id.
+///
+/// Returns the canonicalized summary so the frontend can use the actual
+/// workdir path (resolves `.git` subdirs to the workdir root) as the tab's
+/// stable identifier in its UI label.
 #[tauri::command]
-pub fn open_repository(path: String, state: State<AppState>) -> AppResult<RepoSummary> {
+pub fn open_repository(
+    tab_id: String,
+    path: String,
+    state: State<AppState>,
+) -> AppResult<RepoSummary> {
     let p = PathBuf::from(&path);
     let canonical = git::repo::canonical_workdir(&p)?;
     let summary = git::repo::summarize(&canonical)?;
-    state.set_repo(canonical);
+    state.register_tab(tab_id, canonical);
     Ok(summary)
 }
 
 #[tauri::command]
-pub fn close_repository(state: State<AppState>) -> AppResult<()> {
-    state.clear_repo();
+pub fn close_repository(tab_id: String, state: State<AppState>) -> AppResult<()> {
+    state.remove_tab(&tab_id);
     Ok(())
 }
 
 #[tauri::command]
-pub fn current_repository(state: State<AppState>) -> AppResult<Option<RepoSummary>> {
-    match state.repo_path() {
+pub fn repository_summary(
+    tab_id: String,
+    state: State<AppState>,
+) -> AppResult<Option<RepoSummary>> {
+    match state.tab_path(&tab_id) {
         Some(p) => Ok(Some(git::repo::summarize(&p)?)),
         None => Ok(None),
     }
@@ -32,15 +44,16 @@ pub fn current_repository(state: State<AppState>) -> AppResult<Option<RepoSummar
 
 #[tauri::command]
 pub fn commit_history(
+    tab_id: String,
     state: State<AppState>,
     limit: Option<usize>,
 ) -> AppResult<Vec<CommitInfo>> {
-    let path = state.require_repo_path()?;
+    let path = state.require_tab_path(&tab_id)?;
     git::repo::commit_history(&path, limit.unwrap_or(2000))
 }
 
 #[tauri::command]
-pub fn working_status(state: State<AppState>) -> AppResult<WorkingStatus> {
-    let path = state.require_repo_path()?;
+pub fn working_status(tab_id: String, state: State<AppState>) -> AppResult<WorkingStatus> {
+    let path = state.require_tab_path(&tab_id)?;
     git::stage::working_status(&path)
 }

@@ -1,30 +1,31 @@
 import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
 
 import { api } from "@/lib/tauri";
-import { useRepo } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
 
 export function Toolbar() {
-  const ahead = useRepo((s) => s.aheadBehind.ahead);
-  const behind = useRepo((s) => s.aheadBehind.behind);
-  const upstream = useRepo((s) => s.aheadBehind.upstream);
+  const active = useActiveTab();
   const busy = useRepo((s) => s.busy);
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
+  if (!active) return null;
+
+  const { ahead, behind, upstream } = active.aheadBehind;
+  const disabled = busy !== null;
+  const tabId = active.id;
 
   const onPull = async () => {
-    await withBusy("Pulling...", () => api.pullCurrent());
-    await reloadAll();
+    await withBusy("Pulling...", () => api.pullCurrent(tabId));
+    await reloadAll(tabId);
   };
   const onPush = async () => {
-    await withBusy("Pushing...", () => api.pushCurrent());
-    await reloadAll();
+    await withBusy("Pushing...", () => api.pushCurrent(tabId));
+    await reloadAll(tabId);
   };
   const onFetch = async () => {
-    await withBusy("Fetching...", () => api.fetchAll());
-    await reloadAll();
+    await withBusy("Fetching...", () => api.fetchAll(tabId));
+    await reloadAll(tabId);
   };
-
-  const disabled = busy !== null;
 
   return (
     <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/30 px-3 py-2">
