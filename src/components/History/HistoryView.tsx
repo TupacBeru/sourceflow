@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { relativeTime } from "@/lib/format";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
+import { CommitDetails } from "./CommitDetails";
 import { GraphCell, ROW_HEIGHT, computeGraphWidth } from "./GraphCell";
 
 export function HistoryView() {
@@ -37,8 +38,16 @@ export function HistoryView() {
 
   const headSha = active.repo?.head_sha ?? null;
   const items = virtualizer.getVirtualItems();
+  const hasSelected = !!active.selectedCommit;
   return (
-    <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        ref={parentRef}
+        className={cn(
+          "min-h-0 overflow-auto scrollbar-thin",
+          hasSelected ? "flex-[3]" : "flex-1",
+        )}
+      >
       <div
         style={{
           height: virtualizer.getTotalSize(),
@@ -100,6 +109,12 @@ export function HistoryView() {
           );
         })}
       </div>
+      </div>
+      {hasSelected && (
+        <div className="flex min-h-0 flex-[2] flex-col border-t border-zinc-800 bg-zinc-950">
+          <CommitDetails />
+        </div>
+      )}
     </div>
   );
 }

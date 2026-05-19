@@ -4,6 +4,7 @@ import type {
   BranchInfo,
   CommitInfo,
   DiffPayload,
+  FileEntry,
   GithubStatus,
   PersistedState,
   PersistedTab,
@@ -28,6 +29,10 @@ export const api = {
     tauriInvoke<CommitInfo[]>("commit_history", { tabId, limit }),
   workingStatus: (tabId: string) =>
     tauriInvoke<WorkingStatus>("working_status", { tabId }),
+  commitFiles: (tabId: string, sha: string) =>
+    tauriInvoke<FileEntry[]>("commit_files", { tabId, sha }),
+  commitFileDiff: (tabId: string, sha: string, file: string) =>
+    tauriInvoke<DiffPayload>("commit_file_diff", { tabId, sha, file }),
 
   // Refs
   listBranches: (tabId: string) =>

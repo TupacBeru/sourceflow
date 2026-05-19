@@ -29,6 +29,9 @@ export interface TabState {
   status: WorkingStatus;
   aheadBehind: AheadBehind;
   selectedCommit: string | null;
+  /// File path within the currently selected historical commit (Commit
+  /// History view). Reset whenever `selectedCommit` changes.
+  selectedCommitFile: string | null;
   selectFile: { path: string; staged: boolean } | null;
 }
 
@@ -53,6 +56,7 @@ interface RepoStore {
   /// Per-tab mutations.
   setView: (tabId: string, view: MainView) => void;
   setSelectedCommit: (tabId: string, sha: string | null) => void;
+  setSelectedCommitFile: (tabId: string, file: string | null) => void;
   setSelectFile: (
     tabId: string,
     sel: { path: string; staged: boolean } | null,
@@ -93,6 +97,7 @@ function makeTab(id: string, path: string): TabState {
     status: EMPTY_STATUS,
     aheadBehind: EMPTY_AB,
     selectedCommit: null,
+    selectedCommitFile: null,
     selectFile: null,
   };
 }
@@ -142,7 +147,19 @@ export const useRepo = create<RepoStore>((set, get) => ({
     set((s) => ({ tabs: patchTab(s.tabs, tabId, { view }) })),
 
   setSelectedCommit: (tabId, sha) =>
-    set((s) => ({ tabs: patchTab(s.tabs, tabId, { selectedCommit: sha }) })),
+    set((s) => ({
+      // Picking a different commit invalidates whatever file was selected
+      // inside the previous one.
+      tabs: patchTab(s.tabs, tabId, {
+        selectedCommit: sha,
+        selectedCommitFile: null,
+      }),
+    })),
+
+  setSelectedCommitFile: (tabId, file) =>
+    set((s) => ({
+      tabs: patchTab(s.tabs, tabId, { selectedCommitFile: file }),
+    })),
 
   setSelectFile: (tabId, sel) =>
     set((s) => ({ tabs: patchTab(s.tabs, tabId, { selectFile: sel }) })),

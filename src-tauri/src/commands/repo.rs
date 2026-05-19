@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::git;
-use crate::git::types::{CommitInfo, RepoSummary, WorkingStatus};
+use crate::git::types::{CommitInfo, DiffPayload, FileEntry, RepoSummary, WorkingStatus};
 use crate::state::AppState;
 
 /// Open a repository and register it under a frontend-provided tab id.
@@ -56,4 +56,25 @@ pub fn commit_history(
 pub fn working_status(tab_id: String, state: State<AppState>) -> AppResult<WorkingStatus> {
     let path = state.require_tab_path(&tab_id)?;
     git::stage::working_status(&path)
+}
+
+#[tauri::command]
+pub fn commit_files(
+    tab_id: String,
+    sha: String,
+    state: State<AppState>,
+) -> AppResult<Vec<FileEntry>> {
+    let path = state.require_tab_path(&tab_id)?;
+    git::repo::commit_files(&path, &sha)
+}
+
+#[tauri::command]
+pub fn commit_file_diff(
+    tab_id: String,
+    sha: String,
+    file: String,
+    state: State<AppState>,
+) -> AppResult<DiffPayload> {
+    let path = state.require_tab_path(&tab_id)?;
+    git::repo::commit_file_diff(&path, &sha, &file)
 }

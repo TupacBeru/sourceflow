@@ -46,6 +46,8 @@ pub fn run() {
             commands::repo::repository_summary,
             commands::repo::commit_history,
             commands::repo::working_status,
+            commands::repo::commit_files,
+            commands::repo::commit_file_diff,
             commands::refs::list_branches,
             commands::refs::list_stashes,
             commands::refs::checkout_branch,
