@@ -5,6 +5,8 @@ import { ChevronDown, FolderOpen, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { isDirty, useRepo, type TabState } from "@/store/repoStore";
 
+type DragOverInfo = { id: string; side: "left" | "right" } | null;
+
 export function TabBar() {
   const tabs = useRepo((s) => s.tabs);
   const activeTabId = useRepo((s) => s.activeTabId);
@@ -12,8 +14,11 @@ export function TabBar() {
   const openRepo = useRepo((s) => s.openRepo);
   const closeTab = useRepo((s) => s.closeTab);
   const setActiveTab = useRepo((s) => s.setActiveTab);
+  const reorderTabs = useRepo((s) => s.reorderTabs);
 
   const [showRecent, setShowRecent] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<DragOverInfo>(null);
 
   const pickAndOpen = async () => {
     setShowRecent(false);
@@ -27,6 +32,23 @@ export function TabBar() {
     }
   };
 
+  /// Compute the reordered id array based on where a tab was dropped, then
+  /// apply it via the store. Mirrors the same insertion logic used by browser
+  /// tab strips: drop to the LEFT of target → place dragged tab before target;
+  /// drop to the RIGHT → place after.
+  const performReorder = (draggedId: string, targetId: string, side: "left" | "right") => {
+    if (draggedId === targetId) return;
+    const ids = tabs.map((t) => t.id);
+    const from = ids.indexOf(draggedId);
+    if (from < 0) return;
+    ids.splice(from, 1);
+    let to = ids.indexOf(targetId);
+    if (to < 0) return;
+    if (side === "right") to += 1;
+    ids.splice(to, 0, draggedId);
+    reorderTabs(ids);
+  };
+
   return (
     <div className="flex h-11 items-stretch border-b border-zinc-800 bg-zinc-900/80">
       <div className="flex flex-1 items-stretch overflow-x-auto scrollbar-thin">
@@ -35,8 +57,45 @@ export function TabBar() {
             key={tab.id}
             tab={tab}
             active={tab.id === activeTabId}
+            dragging={draggingId === tab.id}
+            insertLeft={dragOver?.id === tab.id && dragOver.side === "left"}
+            insertRight={dragOver?.id === tab.id && dragOver.side === "right"}
             onClick={() => setActiveTab(tab.id)}
             onClose={() => void closeTab(tab.id)}
+            onDragStart={(e) => {
+              setDraggingId(tab.id);
+              // dataTransfer is required for Firefox to start a drag at all.
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", tab.id);
+            }}
+            onDragOver={(e) => {
+              if (!draggingId || draggingId === tab.id) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const side: "left" | "right" =
+                e.clientX < rect.left + rect.width / 2 ? "left" : "right";
+              setDragOver((curr) =>
+                curr?.id === tab.id && curr.side === side ? curr : { id: tab.id, side },
+              );
+            }}
+            onDragLeave={() => {
+              setDragOver((curr) => (curr?.id === tab.id ? null : curr));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const dragged = e.dataTransfer.getData("text/plain") || draggingId;
+              const target = dragOver ?? { id: tab.id, side: "right" as const };
+              if (dragged) {
+                performReorder(dragged, target.id, target.side);
+              }
+              setDraggingId(null);
+              setDragOver(null);
+            }}
+            onDragEnd={() => {
+              setDraggingId(null);
+              setDragOver(null);
+            }}
           />
         ))}
       </div>
@@ -72,20 +131,44 @@ export function TabBar() {
   );
 }
 
+interface TabItemProps {
+  tab: TabState;
+  active: boolean;
+  dragging: boolean;
+  insertLeft: boolean;
+  insertRight: boolean;
+  onClick: () => void;
+  onClose: () => void;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: (e: React.DragEvent<HTMLDivElement>) => void;
+}
+
 function TabItem({
   tab,
   active,
+  dragging,
+  insertLeft,
+  insertRight,
   onClick,
   onClose,
-}: {
-  tab: TabState;
-  active: boolean;
-  onClick: () => void;
-  onClose: () => void;
-}) {
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+}: TabItemProps) {
   const dirty = isDirty(tab.status);
   return (
     <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={onClick}
       onMouseDown={(e) => {
         // Middle-click closes the tab (browser convention).
@@ -95,16 +178,26 @@ function TabItem({
         }
       }}
       className={cn(
-        "group relative flex min-w-[160px] max-w-[260px] cursor-pointer items-center gap-2.5 border-r border-zinc-800/60 px-4 text-sm",
+        "group relative flex min-w-[160px] max-w-[260px] cursor-pointer items-center gap-2.5 border-r border-zinc-800/60 px-4 text-sm transition-opacity",
         active
           ? "bg-zinc-950 text-zinc-50"
           : "bg-zinc-900/40 text-zinc-200 hover:bg-zinc-900/70 hover:text-zinc-50",
+        dragging && "opacity-40",
       )}
       title={`${tab.label}${tab.repo?.head_branch ? ` (${tab.repo.head_branch})` : ""}\n${tab.path}`}
     >
+      {/* Insertion indicators - drawn as 2px vertical lines on the edge
+          where the dragged tab will land. */}
+      {insertLeft && (
+        <span className="pointer-events-none absolute inset-y-1 -left-px w-0.5 bg-blue-500" />
+      )}
+      {insertRight && (
+        <span className="pointer-events-none absolute inset-y-1 -right-px w-0.5 bg-blue-500" />
+      )}
+
       {/* Active tab indicator stripe */}
       {active && (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
       )}
 
       <span

@@ -9,6 +9,11 @@ export interface RepoSummary {
   is_bare: boolean;
 }
 
+export interface GraphEdge {
+  lane: number;
+  color: number;
+}
+
 export interface CommitInfo {
   sha: string;
   short_sha: string;
@@ -19,6 +24,19 @@ export interface CommitInfo {
   timestamp: number; // unix seconds
   parents: string[];
   refs: string[];
+  /// Graph lane (column) the commit's dot lives in.
+  lane: number;
+  /// Color index for this commit's lane (0..7).
+  color: number;
+  /// Per-lane color in the row gap directly below this commit; `null` slots are
+  /// dead lanes free for reuse.
+  lanes_after: (number | null)[];
+  /// Diagonal edges from the dot to a different lane in the next row (e.g. a
+  /// merge forking off a new branch lane for its second parent).
+  fork_edges: GraphEdge[];
+  /// Diagonal edges into the dot from a different lane in the previous row
+  /// (side branches converging back into this commit).
+  merge_in_edges: GraphEdge[];
 }
 
 export type BranchKind = "local" | "remote";

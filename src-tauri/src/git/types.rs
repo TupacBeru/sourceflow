@@ -28,6 +28,31 @@ pub struct CommitInfo {
     pub parents: Vec<String>,
     /// Refs that point at this commit (branches, tags) - useful for badges.
     pub refs: Vec<String>,
+    /// Graph lane index this commit's dot lives in (0-based, left-to-right).
+    pub lane: u32,
+    /// Color index assigned to this commit's lane (0-based, cycles through the
+    /// frontend palette).
+    pub color: u32,
+    /// Lane state in the row gap *immediately below* this commit. `None` slots
+    /// are dead lanes (free for reuse). The renderer uses this together with the
+    /// previous commit's `lanes_after` to know which vertical lines to draw.
+    pub lanes_after: Vec<Option<u32>>,
+    /// Diagonal edges starting at this commit's dot and ending in a *different*
+    /// lane in the next row. Used for merge commits forking off a new lane for
+    /// their non-first parent.
+    pub fork_edges: Vec<GraphEdge>,
+    /// Diagonal edges ending at this commit's dot from a *different* lane in
+    /// the previous row. Used when several lanes were waiting for this commit
+    /// (i.e. a side branch merges in here).
+    pub merge_in_edges: Vec<GraphEdge>,
+}
+
+/// One diagonal edge in the commit graph - the renderer pairs `lane` with this
+/// commit's own lane to draw a curve between the two columns.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub lane: u32,
+    pub color: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

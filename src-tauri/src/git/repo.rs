@@ -4,6 +4,7 @@ use git2::{Repository, Sort};
 
 use crate::error::{AppError, AppResult};
 
+use super::graph::assign_lanes;
 use super::types::{CommitInfo, RepoSummary};
 
 /// Open a `git2::Repository` at `path`, validating that it actually contains a `.git`.
@@ -95,8 +96,14 @@ pub fn commit_history(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             timestamp: commit.time().seconds(),
             parents,
             refs,
+            lane: 0,
+            color: 0,
+            lanes_after: Vec::new(),
+            fork_edges: Vec::new(),
+            merge_in_edges: Vec::new(),
         });
     }
+    assign_lanes(&mut out);
     Ok(out)
 }
 

@@ -4,6 +4,7 @@
 //! thin and the libgit2 dependency does not leak into the rest of the crate.
 
 pub mod credentials;
+pub mod graph;
 pub mod refs;
 pub mod remote;
 pub mod repo;
