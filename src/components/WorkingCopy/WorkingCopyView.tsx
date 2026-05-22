@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useResizableSplit } from "@/lib/useResizableSplit";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
+import { ConflictBanner } from "./ConflictBanner";
 import { FileList } from "./FileList";
 import { DiffPanel } from "./DiffPanel";
 import { CommitForm } from "./CommitForm";
@@ -31,6 +32,7 @@ export function WorkingCopyView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ConflictBanner />
       <div ref={containerRef} className="flex min-h-0 flex-1">
         <div
           className="flex shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/30"
@@ -43,7 +45,7 @@ export function WorkingCopyView() {
           <DiffPanel />
         </div>
       </div>
-      <CommitForm />
+      {active.operationState.kind === "none" && <CommitForm />}
     </div>
   );
 }

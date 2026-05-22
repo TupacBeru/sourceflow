@@ -14,6 +14,16 @@ import { api } from "@/lib/tauri";
 import type { ResetMode } from "@/lib/types";
 import { useRepo } from "@/store/repoStore";
 
+function focusConflictsIfNeeded(tabId: string) {
+  const tab = useRepo.getState().tabs.find((t) => t.id === tabId);
+  if (!tab || tab.operationState.kind === "none") return;
+  useRepo.getState().setView(tabId, "working");
+  const first = tab.status.conflicted[0];
+  if (first) {
+    useRepo.getState().setSelectFile(tabId, { path: first.path, staged: false });
+  }
+}
+
 export function useGitActions(tabId: string) {
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
@@ -122,8 +132,8 @@ export function useGitActions(tabId: string) {
         body: (
           <span>
             Fast-forwards when possible; otherwise creates a merge commit. If
-            there are conflicts the operation is aborted and the working copy is
-            restored.
+            there are conflicts you can resolve them in Working Copy with your
+            configured merge tool.
           </span>
         ),
         confirmLabel: "Merge",
@@ -133,6 +143,7 @@ export function useGitActions(tabId: string) {
         api.mergeBranch(tabId, branchName),
       );
       await reloadAll(tabId);
+      focusConflictsIfNeeded(tabId);
     },
     [tabId, withBusy, reloadAll],
   );
@@ -144,8 +155,8 @@ export function useGitActions(tabId: string) {
         body: (
           <span>
             Rewrites the current branch's commits on top of '{ontoName}'. If any
-            commit conflicts, the rebase is aborted and the branch is restored
-            to its pre-rebase state.
+            commit conflicts, the rebase pauses so you can resolve files in
+            Working Copy.
           </span>
         ),
         confirmLabel: "Rebase",
@@ -155,6 +166,7 @@ export function useGitActions(tabId: string) {
         api.rebaseOnto(tabId, ontoName),
       );
       await reloadAll(tabId);
+      focusConflictsIfNeeded(tabId);
     },
     [tabId, withBusy, reloadAll],
   );
@@ -177,6 +189,7 @@ export function useGitActions(tabId: string) {
         api.cherryPick(tabId, sha),
       );
       await reloadAll(tabId);
+      focusConflictsIfNeeded(tabId);
     },
     [tabId, withBusy, reloadAll],
   );
@@ -194,6 +207,7 @@ export function useGitActions(tabId: string) {
         api.revertCommit(tabId, sha),
       );
       await reloadAll(tabId);
+      focusConflictsIfNeeded(tabId);
     },
     [tabId, withBusy, reloadAll],
   );

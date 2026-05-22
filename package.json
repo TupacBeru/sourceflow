@@ -11,6 +11,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "package": "tauri build --bundles rpm",
+    "package:all": "tauri build --bundles rpm,appimage,deb",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

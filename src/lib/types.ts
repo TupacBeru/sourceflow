@@ -96,6 +96,20 @@ export interface AheadBehind {
 
 export type ResetMode = "soft" | "mixed" | "hard";
 
+export type OperationKind = "none" | "merge" | "rebase" | "cherrypick" | "revert";
+
+export interface RepoOperationState {
+  kind: OperationKind;
+  label: string | null;
+  conflicted_count: number;
+  can_continue: boolean;
+  merge_tool_name: string | null;
+}
+
+export interface MergeToolSettings {
+  merge_tool: string | null;
+}
+
 export interface DiffPayload {
   path: string;
   old_path: string | null;

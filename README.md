@@ -28,7 +28,54 @@ Phase 1 deliverables:
 - GitHub OAuth + KWallet credential storage
 - Pull / Push / Fetch toolbar
 
+## Install for daily use (Fedora / KDE)
+
+Build a system RPM once, install it, then launch **SourceFlow** from the app menu
+and pin it to the taskbar like any other app (no terminal needed).
+
+```bash
+# One-time: build tools (rpm-build only if packaging fails)
+sudo dnf install \
+    webkit2gtk4.1-devel \
+    openssl-devel \
+    libsecret-devel \
+    libappindicator-gtk3-devel \
+    librsvg2-devel \
+    gcc gcc-c++ \
+    pkgconf-pkg-config
+
+cd ~/Projects/sourceflow
+npm install
+./scripts/install-rpm.sh   # builds release RPM and installs with dnf
+```
+
+Or build only (install manually):
+
+```bash
+./scripts/build-rpm.sh
+sudo dnf install src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
+```
+
+After install:
+
+- **App menu:** Development → SourceFlow (or search “SourceFlow”)
+- **Command:** `sourceflow` (on your `PATH`)
+- **Taskbar:** right-click the launcher entry → pin to task manager
+
+The `.desktop` file sets `StartupWMClass=sourceflow` so KDE groups the running
+window with the launcher icon correctly.
+
+**Runtime dependencies** (pulled in by the RPM): `webkit2gtk4.1`, `libsecret`,
+`git` (required for merge/rebase and external merge tools).
+
+To rebuild after pulling changes: run `./scripts/build-rpm.sh` again and
+`sudo dnf upgrade src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm`.
+
+Other bundle formats (optional): `npm run package:all` builds RPM, AppImage, and deb.
+
 ## System Requirements (Fedora KDE)
+
+Build-from-source dependencies (included in the install section above):
 
 ```bash
 sudo dnf install \

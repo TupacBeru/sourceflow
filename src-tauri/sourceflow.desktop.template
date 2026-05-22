@@ -1,0 +1,13 @@
+[Desktop Entry]
+Categories={{categories}}
+Comment={{comment}}
+Exec={{exec}}
+GenericName=Git Client
+Icon={{icon}}
+Keywords=git;github;version control;merge;branch;
+Name={{name}}
+StartupNotify=true
+StartupWMClass=sourceflow
+Terminal=false
+Type=Application
+X-KDE-SubstituteUID=false

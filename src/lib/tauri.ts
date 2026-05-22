@@ -9,6 +9,8 @@ import type {
   PersistedState,
   PersistedTab,
   RepoSummary,
+  MergeToolSettings,
+  RepoOperationState,
   ResetMode,
   StashInfo,
   WorkingStatus,
@@ -120,6 +122,24 @@ export const api = {
     tauriInvoke<null>("cherry_pick", { tabId, sha }),
   revertCommit: (tabId: string, sha: string) =>
     tauriInvoke<null>("revert_commit", { tabId, sha }),
+
+  // Conflict resolution
+  repositoryOperationState: (tabId: string) =>
+    tauriInvoke<RepoOperationState>("repository_operation_state", { tabId }),
+  markConflictResolved: (tabId: string, file: string) =>
+    tauriInvoke<null>("mark_conflict_resolved", { tabId, file }),
+  resolveWithMergetool: (tabId: string, file: string) =>
+    tauriInvoke<null>("resolve_with_mergetool", { tabId, file }),
+  openConflictFile: (tabId: string, file: string) =>
+    tauriInvoke<null>("open_conflict_file", { tabId, file }),
+  continueOperation: (tabId: string) =>
+    tauriInvoke<null>("continue_operation", { tabId }),
+  abortOperation: (tabId: string) =>
+    tauriInvoke<null>("abort_operation", { tabId }),
+  getMergeToolSettings: () =>
+    tauriInvoke<MergeToolSettings>("get_merge_tool_settings"),
+  setMergeToolSettings: (settings: MergeToolSettings) =>
+    tauriInvoke<null>("set_merge_tool_settings", { settings }),
 
   // Ops: push specific branch
   pushBranch: (

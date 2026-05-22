@@ -138,6 +138,36 @@ pub struct AheadBehind {
     pub upstream: Option<String>,
 }
 
+/// In-progress merge / rebase / cherry-pick / revert detected from repo state.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OperationKind {
+    #[default]
+    None,
+    Merge,
+    Rebase,
+    CherryPick,
+    Revert,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RepoOperationState {
+    pub kind: OperationKind,
+    /// Human-readable context, e.g. branch being merged in.
+    pub label: Option<String>,
+    pub conflicted_count: usize,
+    /// True when every conflicted path is staged (index has no conflicts).
+    pub can_continue: bool,
+    /// Configured merge tool name from git or SourceFlow override.
+    pub merge_tool_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeToolSettings {
+    /// Override `merge.tool` for `git mergetool` (e.g. "meld", "vimdiff").
+    pub merge_tool: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffPayload {
     pub path: String,

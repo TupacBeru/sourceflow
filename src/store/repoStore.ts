@@ -6,6 +6,7 @@ import type {
   BranchInfo,
   CommitInfo,
   GithubStatus,
+  RepoOperationState,
   RepoSummary,
   StashInfo,
   WorkingStatus,
@@ -40,6 +41,7 @@ export interface TabState {
   /// pulls/pushes/fetches use the global `busy` flag instead so we don't
   /// fold the two indicators together.
   backgroundFetching: boolean;
+  operationState: RepoOperationState;
 }
 
 interface RepoStore {
@@ -97,6 +99,14 @@ const EMPTY_STATUS: WorkingStatus = {
 
 const EMPTY_AB: AheadBehind = { ahead: 0, behind: 0, upstream: null };
 
+const EMPTY_OP: RepoOperationState = {
+  kind: "none",
+  label: null,
+  conflicted_count: 0,
+  can_continue: false,
+  merge_tool_name: null,
+};
+
 function makeTab(id: string, path: string): TabState {
   const label = path.split("/").filter(Boolean).pop() ?? path;
   return {
@@ -116,6 +126,7 @@ function makeTab(id: string, path: string): TabState {
     selectFile: null,
     lastFetchedAt: null,
     backgroundFetching: false,
+    operationState: EMPTY_OP,
   };
 }
 
@@ -330,12 +341,13 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   reloadAll: async (tabId) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
-    const [branches, stashes, commits, status, ab] = await Promise.all([
+    const [branches, stashes, commits, status, ab, op] = await Promise.all([
       api.listBranches(tabId).catch(() => [] as BranchInfo[]),
       api.listStashes(tabId).catch(() => [] as StashInfo[]),
       api.commitHistory(tabId, 2000).catch(() => [] as CommitInfo[]),
       api.workingStatus(tabId).catch(() => EMPTY_STATUS),
       api.aheadBehind(tabId).catch(() => EMPTY_AB),
+      api.repositoryOperationState(tabId).catch(() => EMPTY_OP),
     ]);
     set((s) => ({
       tabs: patchTab(s.tabs, tabId, {
@@ -344,6 +356,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
         commits,
         status,
         aheadBehind: ab,
+        operationState: op,
         // Manual reloadAll usually follows a user-initiated fetch/pull/push,
         // so mark the freshness clock too.
         lastFetchedAt: Date.now(),
@@ -353,12 +366,13 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   reloadStatus: async (tabId) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
-    const [status, ab] = await Promise.all([
+    const [status, ab, op] = await Promise.all([
       api.workingStatus(tabId).catch(() => EMPTY_STATUS),
       api.aheadBehind(tabId).catch(() => EMPTY_AB),
+      api.repositoryOperationState(tabId).catch(() => EMPTY_OP),
     ]);
     set((s) => ({
-      tabs: patchTab(s.tabs, tabId, { status, aheadBehind: ab }),
+      tabs: patchTab(s.tabs, tabId, { status, aheadBehind: ab, operationState: op }),
     }));
   },
 

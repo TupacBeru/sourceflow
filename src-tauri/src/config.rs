@@ -40,6 +40,10 @@ pub struct PersistedState {
     /// (only the missing client_secret keeps the device flow safe). This
     /// supersedes the SOURCEFLOW_GH_CLIENT_ID env var when set.
     pub github_client_id: Option<String>,
+
+    /// When set, passed to `git -c merge.tool=<name> mergetool` instead of the
+    /// user's global git config.
+    pub merge_tool: Option<String>,
 }
 
 fn config_dir() -> AppResult<PathBuf> {
@@ -85,5 +89,22 @@ pub fn load_github_client_id() -> AppResult<Option<String>> {
 pub fn save_github_client_id(id: Option<String>) -> AppResult<()> {
     let mut state = load()?;
     state.github_client_id = id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    save(&state)
+}
+
+pub fn load_merge_tool_settings() -> AppResult<crate::git::types::MergeToolSettings> {
+    let state = load()?;
+    Ok(crate::git::types::MergeToolSettings {
+        merge_tool: state.merge_tool,
+    })
+}
+
+pub fn save_merge_tool_settings(settings: &crate::git::types::MergeToolSettings) -> AppResult<()> {
+    let mut state = load()?;
+    state.merge_tool = settings
+        .merge_tool
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     save(&state)
 }

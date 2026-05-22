@@ -1,5 +1,9 @@
-import { EyeOff, Minus, Plus, Trash2 } from "lucide-react";
+import { Check, EyeOff, Minus, Plus, Trash2, Wrench } from "lucide-react";
 
+import {
+  ContextMenu,
+  type ContextMenuItem,
+} from "@/components/ContextMenu/ContextMenu";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import type { FileEntry } from "@/lib/types";
@@ -15,6 +19,8 @@ export function FileList() {
   const tabId = active.id;
   const status = active.status;
   const selectFile = active.selectFile;
+  const op = active.operationState;
+  const mergeToolLabel = op.merge_tool_name ?? "external tool";
 
   const stage = async (path: string) => {
     await withBusy(`Staging ${path}`, () => api.stageFile(tabId, path));
@@ -171,12 +177,46 @@ export function FileList() {
       {status.conflicted.length > 0 && (
         <Group label="Conflicted" count={status.conflicted.length}>
           {status.conflicted.map((f) => (
-            <div
+            <ContextMenu
               key={`c-${f.path}`}
-              className="px-3 py-1 text-xs text-red-300"
+              items={() =>
+                conflictMenuItems(tabId, f.path, mergeToolLabel, {
+                  resolve: () =>
+                    withBusy(`Opening ${mergeToolLabel}...`, () =>
+                      api.resolveWithMergetool(tabId, f.path),
+                    ).then(() => reloadStatus(tabId)),
+                  markResolved: () =>
+                    withBusy(`Marking ${f.path} resolved`, () =>
+                      api.markConflictResolved(tabId, f.path),
+                    ).then(() => reloadStatus(tabId)),
+                  openEditor: () =>
+                    api.openConflictFile(tabId, f.path).then(() =>
+                      reloadStatus(tabId),
+                    ),
+                  select: () =>
+                    setSelectFile(tabId, { path: f.path, staged: false }),
+                })
+              }
             >
-              {f.path}
-            </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectFile(tabId, { path: f.path, staged: false })
+                }
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs",
+                  selectFile?.path === f.path
+                    ? "bg-red-900/50"
+                    : "hover:bg-red-900/30",
+                )}
+                title="Right-click to resolve"
+              >
+                <StatusBadge status="conflicted" staged={false} />
+                <span className="flex-1 truncate font-mono text-[11px] text-red-200">
+                  {f.path}
+                </span>
+              </button>
+            </ContextMenu>
           ))}
         </Group>
       )}
@@ -322,6 +362,40 @@ function ActionButton({
       {children}
     </button>
   );
+}
+
+function conflictMenuItems(
+  _tabId: string,
+  _path: string,
+  toolLabel: string,
+  actions: {
+    resolve: () => void | Promise<void>;
+    markResolved: () => void | Promise<void>;
+    openEditor: () => void | Promise<void>;
+    select: () => void;
+  },
+): ContextMenuItem[] {
+  return [
+    {
+      label: `Resolve using ${toolLabel}…`,
+      icon: <Wrench size={12} />,
+      onClick: () => void actions.resolve(),
+    },
+    {
+      label: "Mark resolved",
+      icon: <Check size={12} />,
+      onClick: () => void actions.markResolved(),
+    },
+    { type: "separator" },
+    {
+      label: "Open in editor",
+      onClick: () => void actions.openEditor(),
+    },
+    {
+      label: "Show conflicts",
+      onClick: () => actions.select(),
+    },
+  ];
 }
 
 function Empty({ text }: { text: string }) {

@@ -1,21 +1,21 @@
 //! Higher-level repo operations: merge, rebase, cherry-pick, revert, reset,
 //! plus branch CRUD and lightweight tag creation.
 //!
-//! Conflict handling is intentionally minimal in Phase 2 - if libgit2 reports
-//! conflicts after a merge/rebase/cherry-pick/revert, we abort the operation
-//! and bubble up a clear error so the user can resolve in the terminal. A
-//! proper conflict resolution UI is Phase 3.
+//! On merge/rebase/cherry-pick/revert conflicts the repo is left in the
+//! in-progress state so the user can resolve via external tools (see
+//! `conflict.rs`).
 
 use std::path::Path;
 
 use git2::{
-    AutotagOption, BranchType, FetchOptions, Oid, PushOptions, RebaseOptions, Repository,
-    ResetType, Signature,
+    AutotagOption, BranchType, CherrypickOptions, FetchOptions, Oid, PushOptions, RebaseOptions,
+    Repository, ResetType, RevertOptions, Signature,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
+use super::conflict::conflict_checkout_builder;
 use super::credentials::github_callbacks;
 use super::repo::open;
 
@@ -186,7 +186,7 @@ pub fn reset_to(path: &Path, sha: &str, mode: ResetMode) -> AppResult<()> {
 ///  - **Up to date** → no-op.
 ///  - **Fast-forward** → moves HEAD ref to the new tip and checks out.
 ///  - **Non-FF, conflict-free** → writes a merge commit.
-///  - **Conflicts** → cleans up the merge state and returns a clear error.
+///  - **Conflicts** → leaves repo in merging state with conflict markers.
 pub fn merge_branch(path: &Path, branch: &str) -> AppResult<()> {
     let repo = open(path)?;
     let head = repo.head()?;
@@ -218,17 +218,11 @@ pub fn merge_branch(path: &Path, branch: &str) -> AppResult<()> {
         return Ok(());
     }
 
-    // Real merge: build the index in-memory, bail on conflicts, otherwise
-    // write the merge commit.
-    repo.merge(&[&annotated], None, None)?;
+    let mut checkout = conflict_checkout_builder();
+    repo.merge(&[&annotated], None, Some(&mut checkout))?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        // Reset the merge state so the user isn't left in a half-merged repo.
-        repo.cleanup_state()?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-        return Err(AppError::InvalidArg(format!(
-            "merge produced conflicts ({branch} into {head_branch_name}); conflict resolution UI is Phase 3 - resolve in terminal for now"
-        )));
+        return Ok(());
     }
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
@@ -248,10 +242,7 @@ pub fn merge_branch(path: &Path, branch: &str) -> AppResult<()> {
 }
 
 pub fn abort_merge(path: &Path) -> AppResult<()> {
-    let repo = open(path)?;
-    repo.cleanup_state()?;
-    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-    Ok(())
+    super::conflict::abort_operation(path)
 }
 
 // ---------------------------------------------------------------------------
@@ -260,8 +251,7 @@ pub fn abort_merge(path: &Path) -> AppResult<()> {
 
 /// Rebase the current branch onto `onto` (a branch name).
 ///
-/// If any commit produces conflicts we abort the entire rebase to keep the
-/// working tree clean.
+/// If any commit produces conflicts the rebase stops in progress for resolution.
 pub fn rebase_onto(path: &Path, onto: &str) -> AppResult<()> {
     let repo = open(path)?;
     let head = repo.head()?;
@@ -278,6 +268,7 @@ pub fn rebase_onto(path: &Path, onto: &str) -> AppResult<()> {
     let onto_annotated = repo.find_annotated_commit(onto_commit.id())?;
 
     let mut opts = RebaseOptions::new();
+    opts.checkout_options(conflict_checkout_builder());
     let mut rebase = repo.rebase(
         Some(&head_annotated),
         None, // upstream defaults to merge base of HEAD and onto
@@ -290,10 +281,7 @@ pub fn rebase_onto(path: &Path, onto: &str) -> AppResult<()> {
         let _ = op?;
         let index = repo.index()?;
         if index.has_conflicts() {
-            let _ = rebase.abort();
-            return Err(AppError::InvalidArg(format!(
-                "rebase onto {onto} produced conflicts; aborted - resolve in terminal for now"
-            )));
+            return Ok(());
         }
         rebase.commit(None, &sig, None)?;
     }
@@ -302,11 +290,7 @@ pub fn rebase_onto(path: &Path, onto: &str) -> AppResult<()> {
 }
 
 pub fn abort_rebase(path: &Path) -> AppResult<()> {
-    let repo = open(path)?;
-    // Re-open the in-progress rebase and abort it.
-    let mut rebase = repo.open_rebase(None)?;
-    rebase.abort()?;
-    Ok(())
+    super::conflict::abort_operation(path)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,14 +304,12 @@ pub fn cherry_pick(path: &Path, sha: &str) -> AppResult<()> {
     let oid = Oid::from_str(sha).map_err(|_| AppError::InvalidArg(format!("bad sha: {sha}")))?;
     let commit = repo.find_commit(oid)?;
 
-    repo.cherrypick(&commit, None)?;
+    let mut cp_opts = CherrypickOptions::new();
+    cp_opts.checkout_builder(conflict_checkout_builder());
+    repo.cherrypick(&commit, Some(&mut cp_opts))?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        repo.cleanup_state()?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-        return Err(AppError::InvalidArg(format!(
-            "cherry-pick of {sha:.7} produced conflicts; aborted"
-        )));
+        return Ok(());
     }
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
@@ -361,14 +343,12 @@ pub fn revert_commit(path: &Path, sha: &str) -> AppResult<()> {
         ));
     }
 
-    repo.revert(&commit, None)?;
+    let mut rev_opts = RevertOptions::new();
+    rev_opts.checkout_builder(conflict_checkout_builder());
+    repo.revert(&commit, Some(&mut rev_opts))?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        repo.cleanup_state()?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-        return Err(AppError::InvalidArg(format!(
-            "revert of {sha:.7} produced conflicts; aborted"
-        )));
+        return Ok(());
     }
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
