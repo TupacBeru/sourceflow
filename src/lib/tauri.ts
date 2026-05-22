@@ -138,6 +138,10 @@ export const api = {
     tauriInvoke<{ login: string }>("start_github_oauth"),
   githubStatus: () => tauriInvoke<GithubStatus>("github_status"),
   githubLogout: () => tauriInvoke<null>("github_logout"),
+  getGithubClientId: () =>
+    tauriInvoke<string | null>("get_github_client_id"),
+  setGithubClientId: (id: string | null) =>
+    tauriInvoke<null>("set_github_client_id", { id }),
 
   // Config
   loadAppState: () => tauriInvoke<PersistedState>("load_app_state"),

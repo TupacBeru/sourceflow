@@ -34,6 +34,12 @@ pub struct PersistedState {
     /// upgrading, if `tabs` is empty but `last_repo_path` is set, the
     /// frontend will convert it into a single tab and clear this field.
     pub last_repo_path: Option<String>,
+
+    /// GitHub OAuth App client_id, set by the user through the UI. Stored
+    /// in plaintext on purpose - OAuth client IDs are public by design
+    /// (only the missing client_secret keeps the device flow safe). This
+    /// supersedes the SOURCEFLOW_GH_CLIENT_ID env var when set.
+    pub github_client_id: Option<String>,
 }
 
 fn config_dir() -> AppResult<PathBuf> {
@@ -67,4 +73,17 @@ pub fn save(state: &PersistedState) -> AppResult<()> {
     let json = serde_json::to_string_pretty(&to_write)?;
     fs::write(&path, json)?;
     Ok(())
+}
+
+/// Read just the persisted GitHub client_id without disturbing other fields.
+pub fn load_github_client_id() -> AppResult<Option<String>> {
+    Ok(load()?.github_client_id)
+}
+
+/// Write the GitHub client_id (or clear it with `None`), preserving all
+/// other persisted state.
+pub fn save_github_client_id(id: Option<String>) -> AppResult<()> {
+    let mut state = load()?;
+    state.github_client_id = id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    save(&state)
 }

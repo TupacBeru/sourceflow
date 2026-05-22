@@ -78,6 +78,8 @@ pub fn run() {
             commands::auth::start_github_oauth,
             commands::auth::github_status,
             commands::auth::github_logout,
+            commands::auth::get_github_client_id,
+            commands::auth::set_github_client_id,
             commands::config_cmd::load_app_state,
             commands::config_cmd::save_app_state,
             commands::config_cmd::save_tabs,

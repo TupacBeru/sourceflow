@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Github, LogOut } from "lucide-react";
+import { Github, LogOut, Settings } from "lucide-react";
 
+import {
+  ContextMenu,
+  openContextMenu,
+} from "@/components/ContextMenu/ContextMenu";
+import { confirm, prompt } from "@/components/Dialog/DialogHost";
 import { api } from "@/lib/tauri";
 import { useRepo } from "@/store/repoStore";
 
@@ -31,7 +36,55 @@ export function ConnectGitHub() {
     };
   }, []);
 
+  const ensureClientId = async (): Promise<boolean> => {
+    if (github.has_client_id) return true;
+    return promptForClientId();
+  };
+
+  /// Opens a dialog asking for the GitHub OAuth App client_id, persists it,
+  /// refreshes status. Returns true if the user provided a value.
+  const promptForClientId = async (): Promise<boolean> => {
+    const current = await api.getGithubClientId().catch(() => null);
+    const res = await prompt({
+      title: "GitHub OAuth App client_id",
+      body: (
+        <span>
+          Register an OAuth App at{" "}
+          <button
+            type="button"
+            className="text-blue-400 underline hover:text-blue-300"
+            onClick={() =>
+              void openUrl("https://github.com/settings/developers")
+            }
+          >
+            github.com/settings/developers
+          </button>{" "}
+          with <strong>Device Flow</strong> enabled, then paste its client_id
+          here. It's saved to <code>~/.config/sourceflow/state.json</code> and
+          survives restarts.
+        </span>
+      ),
+      fields: [
+        {
+          id: "id",
+          label: "client_id",
+          placeholder: "Iv1.xxxxxxxxxxxxxxxx",
+          defaultValue: current ?? "",
+          required: true,
+        },
+      ],
+      confirmLabel: "Save",
+    });
+    if (!res) return false;
+    const id = (res.id ?? "").trim();
+    if (!id) return false;
+    await api.setGithubClientId(id);
+    await reloadGithub();
+    return true;
+  };
+
   const connect = async () => {
+    if (!(await ensureClientId())) return;
     setBusy(true);
     try {
       await api.startGithubOauth();
@@ -54,17 +107,56 @@ export function ConnectGitHub() {
     await reloadGithub();
   };
 
+  const clearClientId = async () => {
+    const ok = await confirm({
+      title: "Clear stored client_id?",
+      body: (
+        <span>
+          You'll need to paste it again next time you want to connect to
+          GitHub. Your access token (if any) is also cleared.
+        </span>
+      ),
+      confirmLabel: "Clear",
+      danger: true,
+    });
+    if (!ok) return;
+    await api.setGithubClientId(null);
+    await api.githubLogout().catch(() => undefined);
+    await reloadGithub();
+  };
+
+  const connectedMenu = () => [
+    {
+      label: "Change client_id…",
+      icon: <Settings size={12} />,
+      onClick: () => void promptForClientId(),
+    },
+    { type: "separator" as const },
+    {
+      label: "Sign out",
+      icon: <LogOut size={12} />,
+      onClick: () => void logout(),
+    },
+    {
+      label: "Clear client_id and sign out",
+      danger: true,
+      onClick: () => void clearClientId(),
+    },
+  ];
+
   if (github.connected) {
     return (
-      <button
-        onClick={() => void logout()}
-        className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        title="Sign out of GitHub"
-      >
-        <Github size={14} />
-        <span>@{github.login}</span>
-        <LogOut size={12} className="text-zinc-500" />
-      </button>
+      <ContextMenu items={connectedMenu}>
+        <button
+          onClick={() => void logout()}
+          className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+          title={`Signed in as @${github.login}\nClick to sign out · Right-click for options`}
+        >
+          <Github size={14} />
+          <span>@{github.login}</span>
+          <LogOut size={12} className="text-zinc-500" />
+        </button>
+      </ContextMenu>
     );
   }
 
@@ -86,9 +178,37 @@ export function ConnectGitHub() {
     );
   }
 
+  // Not connected and no client_id - one-click to start setup.
+  if (!github.has_client_id) {
+    return (
+      <button
+        onClick={() =>
+          void promptForClientId().then((ok) => {
+            if (ok) void connect();
+          })
+        }
+        className="flex items-center gap-2 rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-xs text-amber-200 hover:bg-amber-900/50"
+        title="GitHub OAuth client_id not set yet"
+      >
+        <Github size={14} />
+        Set up GitHub…
+      </button>
+    );
+  }
+
+  // Have client_id, just not connected (token missing or expired).
   return (
     <button
       onClick={() => void connect()}
+      onContextMenu={(e) =>
+        openContextMenu(e, [
+          {
+            label: "Change client_id…",
+            icon: <Settings size={12} />,
+            onClick: () => void promptForClientId(),
+          },
+        ])
+      }
       disabled={busy}
       className="flex items-center gap-2 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-60"
     >

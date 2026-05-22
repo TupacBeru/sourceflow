@@ -2,12 +2,17 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use crate::auth::{oauth, store};
-use crate::error::AppResult;
+use crate::config;
+use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Serialize)]
 pub struct GithubStatus {
     pub connected: bool,
     pub login: Option<String>,
+    /// Whether a GitHub OAuth client_id is configured anywhere (persisted,
+    /// env, or compiled-in). The UI uses this to decide whether to show the
+    /// "Connect" button or the "Set client_id first" prompt.
+    pub has_client_id: bool,
 }
 
 /// Initiate the GitHub Device Flow.
@@ -25,7 +30,8 @@ pub struct OauthResult {
 pub async fn start_github_oauth(
     window: tauri::Window,
 ) -> AppResult<OauthResult> {
-    let device = oauth::request_device_code().await?;
+    let client_id = oauth::resolve_client_id()?;
+    let device = oauth::request_device_code(&client_id).await?;
 
     // Push the user-facing instructions to the frontend before we start polling.
     let _ = window.emit(
@@ -37,7 +43,8 @@ pub async fn start_github_oauth(
         }),
     );
 
-    let token = oauth::poll_for_token(&device.device_code, device.interval).await?;
+    let token =
+        oauth::poll_for_token(&client_id, &device.device_code, device.interval).await?;
     store::save_github_token(&token)?;
     let login = oauth::fetch_login(&token).await?;
     Ok(OauthResult { login })
@@ -45,29 +52,54 @@ pub async fn start_github_oauth(
 
 #[tauri::command]
 pub async fn github_status() -> AppResult<GithubStatus> {
+    let has_client_id = oauth::resolve_client_id().is_ok();
     let Some(token) = store::load_github_token()? else {
         return Ok(GithubStatus {
             connected: false,
             login: None,
+            has_client_id,
         });
     };
-    // Validate by hitting /user; if it fails (revoked / expired), clear it.
+    // Validate by hitting /user. Only delete the token if GitHub explicitly
+    // tells us the token is bad (401/403) - transient failures (offline,
+    // DNS, 5xx) leave the token in place so we auto-reconnect once the
+    // network comes back. Without this guard, starting the app while WiFi
+    // is still re-associating would nuke the token on every boot.
     match oauth::fetch_login(&token).await {
         Ok(login) => Ok(GithubStatus {
             connected: true,
             login: Some(login),
+            has_client_id,
         }),
-        Err(_) => {
+        Err(AppError::Network(ref e))
+            if matches!(e.status().map(|s| s.as_u16()), Some(401) | Some(403)) =>
+        {
             let _ = store::delete_github_token();
             Ok(GithubStatus {
                 connected: false,
                 login: None,
+                has_client_id,
             })
         }
+        Err(_) => Ok(GithubStatus {
+            connected: false,
+            login: None,
+            has_client_id,
+        }),
     }
 }
 
 #[tauri::command]
 pub fn github_logout() -> AppResult<()> {
     store::delete_github_token()
+}
+
+#[tauri::command]
+pub fn get_github_client_id() -> AppResult<Option<String>> {
+    config::load_github_client_id()
+}
+
+#[tauri::command]
+pub fn set_github_client_id(id: Option<String>) -> AppResult<()> {
+    config::save_github_client_id(id)
 }

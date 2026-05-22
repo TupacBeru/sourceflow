@@ -106,6 +106,7 @@ export interface DiffPayload {
 export interface GithubStatus {
   connected: boolean;
   login: string | null;
+  has_client_id: boolean;
 }
 
 export interface PersistedTab {

@@ -151,7 +151,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
   recentlyClosed: [],
-  github: { connected: false, login: null },
+  github: { connected: false, login: null, has_client_id: false },
   busy: null,
   error: null,
 
@@ -200,7 +200,14 @@ export const useRepo = create<RepoStore>((set, get) => ({
       api.loadAppState().catch(() => null),
       api
         .githubStatus()
-        .catch(() => ({ connected: false, login: null }) as GithubStatus),
+        .catch(
+          () =>
+            ({
+              connected: false,
+              login: null,
+              has_client_id: false,
+            }) as GithubStatus,
+        ),
     ]);
     set({ github: gh });
 
@@ -399,7 +406,14 @@ export const useRepo = create<RepoStore>((set, get) => ({
   reloadGithub: async () => {
     const gh = await api
       .githubStatus()
-      .catch(() => ({ connected: false, login: null }) as GithubStatus);
+      .catch(
+        () =>
+          ({
+            connected: false,
+            login: null,
+            has_client_id: false,
+          }) as GithubStatus,
+      );
     set({ github: gh });
   },
 }));

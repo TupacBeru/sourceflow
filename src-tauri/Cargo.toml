@@ -34,8 +34,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# OS keyring (Secret Service on Linux - works with KWallet and GNOME Keyring)
-keyring = { version = "3", features = ["linux-native"] }
+# OS keyring - declared per-target below to pick the right backend.
+# `linux-native` (keyutils) is in-memory only and does NOT survive reboots,
+# which is why we previously lost tokens on every restart. The combined
+# `linux-native-sync-persistent` backend uses keyutils as an in-process
+# cache AND syncs to the D-Bus Secret Service (KWallet / GNOME Keyring)
+# for actual persistence.
 
 # OAuth helpers
 sha2 = "0.10"
@@ -50,6 +54,15 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native-sync-persistent", "sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified.

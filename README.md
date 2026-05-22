@@ -11,8 +11,10 @@ aims to be:
 
 - Lightweight (Tauri WebView, not Electron)
 - GitHub-only (simple OAuth, no SSH key juggling)
-- Native KDE feel (uses KWallet via the Secret Service API for credentials)
-- A real Git workflow tool: stage, commit, hunk-level operations, branch management
+- Native KDE feel: stores GitHub tokens in the OS keyring (KWallet on KDE,
+  GNOME Keyring on GNOME) via the Secret Service API, so they survive reboots
+- A real Git workflow tool: stage, commit, branch management, merge, rebase,
+  cherry-pick, revert, reset, tag, context menus everywhere
 
 ## Status
 
@@ -63,6 +65,32 @@ npm run tauri dev
 
 The first build of the Rust side will take several minutes as it compiles
 libgit2 and other dependencies. Subsequent rebuilds are incremental.
+
+## GitHub OAuth setup
+
+SourceFlow uses GitHub's [Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow)
+so it never needs a redirect URI or a local HTTP listener. You provide your own
+OAuth App client_id once, the first time you connect.
+
+1. Go to <https://github.com/settings/developers> and create a **New OAuth App**.
+   - Homepage URL: anything (e.g. `https://github.com/your-username`)
+   - Authorization callback URL: anything (Device Flow ignores it)
+2. On the resulting app page, enable **Device Flow** (toggle near the bottom).
+3. Copy the **Client ID** (looks like `Iv1.xxxxxxxxxxxxxxxx` or `Ov23li…`).
+4. In SourceFlow, click **Set up GitHub…** in the toolbar and paste it.
+
+The client_id is saved to `~/.config/sourceflow/state.json` and survives
+restarts. You can change or clear it later via right-click on the GitHub
+button.
+
+The access token itself is stored in the OS keyring:
+- Linux: D-Bus Secret Service (KWallet on KDE, GNOME Keyring on GNOME)
+- macOS: Keychain
+- Windows: Credential Manager
+
+so it also survives reboots. (Earlier dev builds used the kernel keyutils
+store which is in-memory only - hence the "click connect after every restart"
+bug. That's fixed.)
 
 ## Project Layout
 

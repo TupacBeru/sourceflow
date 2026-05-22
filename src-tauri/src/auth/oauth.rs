@@ -9,36 +9,56 @@
 //!
 //! Reference: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
 //!
-//! Replace `CLIENT_ID` with the client_id of an OAuth App you register
-//! at https://github.com/settings/developers . The "device flow" toggle
-//! must be enabled on that app.
+//! The OAuth App client_id is resolved at runtime (see `resolve_client_id`):
+//!   1. Value persisted via the in-app settings (preferred)
+//!   2. `SOURCEFLOW_GH_CLIENT_ID` runtime env var (dev convenience)
+//!   3. Compile-time `SOURCEFLOW_GH_CLIENT_ID` baked into the binary
+//!
+//! Register an OAuth App at https://github.com/settings/developers with the
+//! "Device Flow" toggle on, then paste the client_id into Settings.
 
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 
+use crate::config;
 use crate::error::{AppError, AppResult};
 
-/// OAuth App client_id, baked in at compile time.
-///
-/// Embedding it in the binary is fine: with device flow there is no
-/// client_secret, and any malicious actor who reuses the client_id is
-/// constrained by GitHub's user-consent step.
-///
-/// To set it: `SOURCEFLOW_GH_CLIENT_ID=Iv1.xxxxx npm run tauri:dev`
-/// (or export it once in your shell rc).
-const CLIENT_ID_OPT: Option<&str> = option_env!("SOURCEFLOW_GH_CLIENT_ID");
+/// Compile-time fallback client_id, used only if neither the persisted
+/// setting nor the runtime env var is set. Allows distributing prebuilt
+/// binaries with a default OAuth App.
+const COMPILE_CLIENT_ID: Option<&str> = option_env!("SOURCEFLOW_GH_CLIENT_ID");
 
-fn client_id() -> AppResult<&'static str> {
-    CLIENT_ID_OPT.ok_or_else(|| {
-        AppError::Oauth(
-            "GitHub client_id is not configured. Register an OAuth App at \
-             https://github.com/settings/developers (enable Device Flow), \
-             then rebuild with SOURCEFLOW_GH_CLIENT_ID=<your_client_id>."
-                .into(),
-        )
-    })
+/// Resolve the GitHub OAuth client_id from (in priority order) the
+/// persisted config, the runtime env var, or the compile-time fallback.
+///
+/// Returned as an owned `String` so async tasks can move it freely.
+pub fn resolve_client_id() -> AppResult<String> {
+    if let Ok(Some(id)) = config::load_github_client_id() {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    if let Ok(env_id) = std::env::var("SOURCEFLOW_GH_CLIENT_ID") {
+        let trimmed = env_id.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    if let Some(id) = COMPILE_CLIENT_ID {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    Err(AppError::Oauth(
+        "GitHub client_id is not set. Open Settings (or the GitHub button) \
+         in SourceFlow and paste the client_id of an OAuth App you registered \
+         at https://github.com/settings/developers (with Device Flow enabled)."
+            .into(),
+    ))
 }
 
 /// Scopes we request. `repo` covers private + public, `read:user` lets us
@@ -61,13 +81,12 @@ struct PollResponse {
     interval: Option<u64>,
 }
 
-pub async fn request_device_code() -> AppResult<DeviceCodeResponse> {
-    let id = client_id()?;
+pub async fn request_device_code(client_id: &str) -> AppResult<DeviceCodeResponse> {
     let client = reqwest::Client::new();
     let resp = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .form(&[("client_id", id), ("scope", SCOPES)])
+        .form(&[("client_id", client_id), ("scope", SCOPES)])
         .send()
         .await?
         .error_for_status()?;
@@ -75,8 +94,11 @@ pub async fn request_device_code() -> AppResult<DeviceCodeResponse> {
 }
 
 /// Poll the token endpoint until the user authorizes (or it times out).
-pub async fn poll_for_token(device_code: &str, mut interval_secs: u64) -> AppResult<String> {
-    let id = client_id()?;
+pub async fn poll_for_token(
+    client_id: &str,
+    device_code: &str,
+    mut interval_secs: u64,
+) -> AppResult<String> {
     let client = reqwest::Client::new();
     let deadline = std::time::Instant::now() + Duration::from_secs(900); // 15 minutes max
 
@@ -90,7 +112,7 @@ pub async fn poll_for_token(device_code: &str, mut interval_secs: u64) -> AppRes
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", "application/json")
             .form(&[
-                ("client_id", id),
+                ("client_id", client_id),
                 ("device_code", device_code),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
