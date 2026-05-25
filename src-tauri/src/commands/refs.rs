@@ -18,6 +18,20 @@ pub fn list_stashes(tab_id: String, state: State<AppState>) -> AppResult<Vec<Sta
 }
 
 #[tauri::command]
+pub async fn stash_push(
+    tab_id: String,
+    state: State<'_, AppState>,
+    message: Option<String>,
+) -> AppResult<()> {
+    let path = state.require_tab_path(&tab_id)?;
+    tokio::task::spawn_blocking(move || {
+        git::refs::stash_push(&path, message.as_deref())
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Other(e.to_string()))?
+}
+
+#[tauri::command]
 pub fn checkout_branch(
     tab_id: String,
     state: State<AppState>,

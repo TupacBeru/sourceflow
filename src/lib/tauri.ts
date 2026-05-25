@@ -43,6 +43,8 @@ export const api = {
     tauriInvoke<BranchInfo[]>("list_branches", { tabId }),
   listStashes: (tabId: string) =>
     tauriInvoke<StashInfo[]>("list_stashes", { tabId }),
+  stashPush: (tabId: string, message?: string | null) =>
+    tauriInvoke<null>("stash_push", { tabId, message: message ?? null }),
   checkoutBranch: (tabId: string, branch: string) =>
     tauriInvoke<null>("checkout_branch", { tabId, branch }),
 

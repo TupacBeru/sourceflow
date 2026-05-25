@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use git2::{BranchType, Repository};
+use git2::{BranchType, Repository, StashFlags};
 
 use crate::error::AppResult;
 
@@ -109,6 +109,24 @@ pub fn list_stashes(path: &Path) -> AppResult<Vec<StashInfo>> {
         true
     })?;
     Ok(out)
+}
+
+/// Stash tracked and untracked changes (`git stash push -u`).
+pub fn stash_push(path: &Path, message: Option<&str>) -> AppResult<()> {
+    let mut repo = open(path)?;
+    let sig = repo.signature().map_err(crate::error::AppError::from)?;
+    let branch = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(String::from))
+        .unwrap_or_else(|| "HEAD".into());
+    let msg = message
+        .filter(|m| !m.trim().is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| format!("WIP on {branch}"));
+
+    repo.stash_save(&sig, &msg, Some(StashFlags::INCLUDE_UNTRACKED))?;
+    Ok(())
 }
 
 /// Checkout a local branch by short name.

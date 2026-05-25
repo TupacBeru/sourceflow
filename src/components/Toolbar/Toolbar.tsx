@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Check, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, Archive, Check, RefreshCw } from "lucide-react";
 
+import { prompt } from "@/components/Dialog/DialogHost";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import { useActiveTab, useRepo } from "@/store/repoStore";
@@ -45,6 +46,34 @@ export function Toolbar() {
     await reloadAll(tabId);
   };
 
+  const onStash = async () => {
+    const res = await prompt({
+      title: "Stash changes",
+      body: (
+        <span className="text-zinc-400">
+          Saves tracked and untracked changes to the stash stack (like{" "}
+          <code>git stash push -u</code>). Leave the message empty for a default
+          name.
+        </span>
+      ),
+      fields: [
+        {
+          id: "message",
+          label: "Stash message",
+          placeholder: "WIP on …",
+          type: "textarea",
+        },
+      ],
+      confirmLabel: "Stash",
+    });
+    if (!res) return;
+    const message = (res.message ?? "").trim();
+    await withBusy("Stashing...", () =>
+      api.stashPush(tabId, message || null),
+    );
+    await reloadAll(tabId);
+  };
+
   return (
     <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/30 px-3 py-2">
       <PullSplitButton
@@ -69,6 +98,13 @@ export function Toolbar() {
         onClick={() => void onFetch()}
         disabled={disabled}
         title="Fetch all remotes"
+      />
+      <ToolbarButton
+        icon={<Archive size={16} />}
+        label="Stash"
+        onClick={() => void onStash()}
+        disabled={disabled}
+        title="Stash tracked and untracked changes"
       />
       <div className="ml-auto flex items-center gap-2 text-xs">
         {busy ? (

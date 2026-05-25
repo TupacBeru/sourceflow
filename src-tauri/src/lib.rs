@@ -50,6 +50,7 @@ pub fn run() {
             commands::repo::commit_file_diff,
             commands::refs::list_branches,
             commands::refs::list_stashes,
+            commands::refs::stash_push,
             commands::refs::checkout_branch,
             commands::stage::stage_file,
             commands::stage::unstage_file,

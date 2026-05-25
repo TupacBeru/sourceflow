@@ -42,31 +42,41 @@ export function FileList() {
     await reloadStatus(tabId);
   };
   const stageAll = async (entries: FileEntry[]) => {
+    if (entries.length === 0) return;
     await withBusy("Staging files...", async () => {
       for (const e of entries) await api.stageFile(tabId, e.path);
     });
     await reloadStatus(tabId);
   };
   const unstageAll = async (entries: FileEntry[]) => {
+    if (entries.length === 0) return;
     await withBusy("Unstaging files...", async () => {
       for (const e of entries) await api.unstageFile(tabId, e.path);
     });
     await reloadStatus(tabId);
   };
 
+  const toStage = [...status.unstaged, ...status.untracked];
+  const canStageAll = toStage.length > 0;
+  const canUnstageAll = status.staged.length > 0;
+
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
-      <Group
-        label="Staged"
-        count={status.staged.length}
-        action={
-          status.staged.length > 0 ? (
-            <ActionButton onClick={() => void unstageAll(status.staged)}>
-              Unstage All
-            </ActionButton>
-          ) : null
-        }
-      >
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/80 px-3 py-2">
+        <ActionButton
+          onClick={() => void stageAll(toStage)}
+          disabled={!canStageAll}
+        >
+          Stage All
+        </ActionButton>
+        <ActionButton
+          onClick={() => void unstageAll(status.staged)}
+          disabled={!canUnstageAll}
+        >
+          Unstage All
+        </ActionButton>
+      </div>
+      <Group label="Staged" count={status.staged.length}>
         {status.staged.map((f) => (
           <FileRow
             key={`s-${f.path}`}
@@ -82,17 +92,7 @@ export function FileList() {
         {status.staged.length === 0 && <Empty text="No staged changes" />}
       </Group>
 
-      <Group
-        label="Unstaged"
-        count={status.unstaged.length}
-        action={
-          status.unstaged.length > 0 ? (
-            <ActionButton onClick={() => void stageAll(status.unstaged)}>
-              Stage All
-            </ActionButton>
-          ) : null
-        }
-      >
+      <Group label="Unstaged" count={status.unstaged.length}>
         {status.unstaged.map((f) => (
           <FileRow
             key={`u-${f.path}`}
@@ -134,17 +134,7 @@ export function FileList() {
         {status.unstaged.length === 0 && <Empty text="No unstaged changes" />}
       </Group>
 
-      <Group
-        label="Untracked"
-        count={status.untracked.length}
-        action={
-          status.untracked.length > 0 ? (
-            <ActionButton onClick={() => void stageAll(status.untracked)}>
-              Stage All
-            </ActionButton>
-          ) : null
-        }
-      >
+      <Group label="Untracked" count={status.untracked.length}>
         {status.untracked.map((f) => (
           <FileRow
             key={`n-${f.path}`}
@@ -350,14 +340,18 @@ function describe(s: FileEntry["status"], staged: boolean) {
 function ActionButton({
   onClick,
   children,
+  disabled,
 }: {
   onClick: () => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="rounded px-2 py-0.5 text-[10px] font-medium text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+      disabled={disabled}
+      className="rounded px-2 py-0.5 text-[10px] font-medium text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
