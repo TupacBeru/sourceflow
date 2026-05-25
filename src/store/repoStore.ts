@@ -87,6 +87,8 @@ interface RepoStore {
   /// Error / busy plumbing - shared across tabs (only one operation
   /// runs in the UI at a time for now). Per-tab busy comes in Phase 3.
   withBusy: <T>(label: string, fn: () => Promise<T>) => Promise<T | null>;
+  /** Like `withBusy` but rethrows after recording the error (for flows that branch on error kind). */
+  withBusyThrow: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
   setError: (msg: string | null) => void;
 }
 
@@ -203,6 +205,18 @@ export const useRepo = create<RepoStore>((set, get) => ({
     } catch (e) {
       set({ busy: null, error: formatErr(e) });
       return null;
+    }
+  },
+
+  withBusyThrow: async (label, fn) => {
+    set({ busy: label, error: null });
+    try {
+      return await fn();
+    } catch (e) {
+      set({ error: formatErr(e) });
+      throw e;
+    } finally {
+      set({ busy: null });
     }
   },
 

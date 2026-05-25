@@ -98,6 +98,9 @@ export type ResetMode = "soft" | "mixed" | "hard";
 
 export type OperationKind = "none" | "merge" | "rebase" | "cherrypick" | "revert";
 
+/** How to integrate upstream when pull is not a fast-forward. */
+export type PullStrategy = "ff" | "merge" | "rebase";
+
 export interface RepoOperationState {
   kind: OperationKind;
   label: string | null;

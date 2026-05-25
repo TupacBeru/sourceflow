@@ -11,6 +11,7 @@ import type {
   RepoSummary,
   MergeToolSettings,
   RepoOperationState,
+  PullStrategy,
   ResetMode,
   StashInfo,
   WorkingStatus,
@@ -61,7 +62,8 @@ export const api = {
 
   // Remote
   fetchAll: (tabId: string) => tauriInvoke<null>("fetch_all", { tabId }),
-  pullCurrent: (tabId: string) => tauriInvoke<null>("pull_current", { tabId }),
+  pullCurrent: (tabId: string, strategy: PullStrategy = "ff") =>
+    tauriInvoke<null>("pull_current", { tabId, strategy }),
   pushCurrent: (tabId: string) => tauriInvoke<null>("push_current", { tabId }),
   aheadBehind: (tabId: string) =>
     tauriInvoke<AheadBehind>("ahead_behind", { tabId }),

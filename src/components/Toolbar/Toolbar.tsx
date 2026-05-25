@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Check, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import { useActiveTab, useRepo } from "@/store/repoStore";
+import { PullSplitButton } from "./PullSplitButton";
 
 /** Compact "5m ago" / "just now" formatter; ticks once a minute. */
 function useRelativeMinutes(timestamp: number | null): string | null {
@@ -26,19 +27,15 @@ export function Toolbar() {
   const busy = useRepo((s) => s.busy);
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
+  const tabId = active?.id ?? "";
   // Hooks must run unconditionally - pass `null` when no active tab.
   const lastFetched = useRelativeMinutes(active?.lastFetchedAt ?? null);
   if (!active) return null;
 
   const { ahead, behind, upstream } = active.aheadBehind;
   const disabled = busy !== null;
-  const tabId = active.id;
   const upToDate = upstream && ahead === 0 && behind === 0;
 
-  const onPull = async () => {
-    await withBusy("Pulling...", () => api.pullCurrent(tabId));
-    await reloadAll(tabId);
-  };
   const onPush = async () => {
     await withBusy("Pushing...", () => api.pushCurrent(tabId));
     await reloadAll(tabId);
@@ -50,15 +47,11 @@ export function Toolbar() {
 
   return (
     <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/30 px-3 py-2">
-      <ToolbarButton
-        icon={<ArrowDown size={16} />}
-        label="Pull"
-        badge={behind > 0 ? behind : undefined}
-        badgeColor="amber"
-        highlight={behind > 0}
-        onClick={() => void onPull()}
-        disabled={disabled || !upstream}
-        title={upstream ? `Pull from ${upstream}` : "No upstream configured"}
+      <PullSplitButton
+        tabId={tabId}
+        upstream={upstream}
+        behind={behind}
+        disabled={disabled}
       />
       <ToolbarButton
         icon={<ArrowUp size={16} />}

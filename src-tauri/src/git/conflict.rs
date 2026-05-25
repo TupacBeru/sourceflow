@@ -21,7 +21,7 @@ fn repo_root(repo: &Repository, fallback: &Path) -> PathBuf {
         .unwrap_or_else(|| fallback.to_path_buf())
 }
 
-fn run_git(root: &Path, args: &[&str]) -> AppResult<()> {
+pub(crate) fn run_git(root: &Path, args: &[&str]) -> AppResult<()> {
     let out = Command::new("git")
         .args(args)
         .current_dir(root)

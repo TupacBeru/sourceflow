@@ -14,9 +14,23 @@ pub async fn fetch_all(tab_id: String, state: State<'_, AppState>) -> AppResult<
 }
 
 #[tauri::command]
-pub async fn pull_current(tab_id: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn pull_current(
+    tab_id: String,
+    strategy: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let path = state.require_tab_path(&tab_id)?;
-    tokio::task::spawn_blocking(move || git::remote::pull_current(&path))
+    let strat = match strategy.as_deref() {
+        None | Some("ff") => git::remote::PullStrategy::FfOnly,
+        Some("merge") => git::remote::PullStrategy::Merge,
+        Some("rebase") => git::remote::PullStrategy::Rebase,
+        Some(other) => {
+            return Err(crate::error::AppError::InvalidArg(format!(
+                "unknown pull strategy: {other}"
+            )));
+        }
+    };
+    tokio::task::spawn_blocking(move || git::remote::pull_current(&path, strat))
         .await
         .map_err(|e| crate::error::AppError::Other(e.to_string()))?
 }

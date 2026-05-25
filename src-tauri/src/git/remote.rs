@@ -1,12 +1,34 @@
 use std::path::Path;
 
-use git2::{AnnotatedCommit, BranchType, FetchOptions, PushOptions};
+use git2::{BranchType, FetchOptions, Oid, PushOptions};
+use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
+use super::conflict::run_git;
 use super::credentials::github_callbacks;
 use super::repo::open;
 use super::types::AheadBehind;
+
+/// How to integrate upstream commits when a plain fast-forward is not possible.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PullStrategy {
+    /// Fetch + fast-forward only; error if merge or rebase would be required.
+    FfOnly,
+    /// Fetch + merge upstream into the current branch (creates a merge commit when needed).
+    Merge,
+    /// Fetch + rebase local commits onto the updated upstream tip.
+    Rebase,
+}
+
+struct PullContext {
+    branch_name: String,
+    fetch_oid: Oid,
+    analysis: git2::MergeAnalysis,
+    /// Upstream tracking ref without `refs/remotes/` (e.g. `origin/main`).
+    upstream_short: String,
+}
 
 /// Fetch all configured remotes.
 pub fn fetch_all(path: &Path) -> AppResult<()> {
@@ -27,13 +49,28 @@ pub fn fetch_all(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
-/// Pull (fetch + fast-forward merge) on the current branch.
-///
-/// Phase 1 only supports fast-forward pulls. If a non-FF merge is required
-/// we surface a clear error and ask the user to rebase or merge explicitly
-/// in Phase 2.
-pub fn pull_current(path: &Path) -> AppResult<()> {
+/// Pull (fetch + integrate) on the current branch.
+pub fn pull_current(path: &Path, strategy: PullStrategy) -> AppResult<()> {
     let repo = open(path)?;
+    let ctx = fetch_upstream_for_pull(&repo)?;
+
+    if ctx.analysis.is_up_to_date() {
+        return Ok(());
+    }
+
+    if ctx.analysis.is_fast_forward() {
+        fast_forward_pull(&repo, &ctx)?;
+        return Ok(());
+    }
+
+    match strategy {
+        PullStrategy::FfOnly => Err(AppError::PullNotFastForward),
+        PullStrategy::Merge => pull_merge(path, &ctx),
+        PullStrategy::Rebase => pull_rebase(path, &ctx),
+    }
+}
+
+fn fetch_upstream_for_pull(repo: &git2::Repository) -> AppResult<PullContext> {
     let head = repo.head()?;
     if !head.is_branch() {
         return Err(AppError::InvalidArg(
@@ -54,7 +91,6 @@ pub fn pull_current(path: &Path) -> AppResult<()> {
         .ok_or_else(|| AppError::InvalidArg("invalid upstream ref".into()))?
         .to_string();
 
-    // Determine the remote name from the upstream ref (e.g. refs/remotes/origin/main -> origin)
     let remote_name = upstream_ref
         .strip_prefix("refs/remotes/")
         .and_then(|s| s.split('/').next())
@@ -74,24 +110,39 @@ pub fn pull_current(path: &Path) -> AppResult<()> {
     )?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
-    let fetch_commit: AnnotatedCommit = repo.reference_to_annotated_commit(&fetch_head)?;
-    let analysis = repo.merge_analysis(&[&fetch_commit])?;
+    let fetch = repo.reference_to_annotated_commit(&fetch_head)?;
+    let (analysis, _) = repo.merge_analysis(&[&fetch])?;
 
-    if analysis.0.is_up_to_date() {
-        return Ok(());
-    }
-    if analysis.0.is_fast_forward() {
-        let refname = format!("refs/heads/{branch_name}");
-        let mut reference = repo.find_reference(&refname)?;
-        reference.set_target(fetch_commit.id(), "fast-forward")?;
-        repo.set_head(&refname)?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-        return Ok(());
-    }
+    let upstream_short = upstream_ref
+        .strip_prefix("refs/remotes/")
+        .map(String::from)
+        .unwrap_or(upstream_ref);
 
-    Err(AppError::InvalidArg(
-        "non-fast-forward pull required - merge or rebase support comes in Phase 2".into(),
-    ))
+    Ok(PullContext {
+        branch_name,
+        fetch_oid: fetch.id(),
+        analysis,
+        upstream_short,
+    })
+}
+
+fn fast_forward_pull(repo: &git2::Repository, ctx: &PullContext) -> AppResult<()> {
+    let refname = format!("refs/heads/{}", ctx.branch_name);
+    let mut reference = repo.find_reference(&refname)?;
+    reference.set_target(ctx.fetch_oid, "fast-forward")?;
+    repo.set_head(&refname)?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+    Ok(())
+}
+
+/// Integrate fetched upstream with a merge commit (`git merge FETCH_HEAD`).
+fn pull_merge(path: &Path, _ctx: &PullContext) -> AppResult<()> {
+    run_git(path, &["merge", "FETCH_HEAD"])
+}
+
+/// Replay local commits on top of the updated upstream (`git rebase @{upstream}`).
+fn pull_rebase(path: &Path, ctx: &PullContext) -> AppResult<()> {
+    run_git(path, &["rebase", &ctx.upstream_short])
 }
 
 /// Push the current branch to its upstream remote.

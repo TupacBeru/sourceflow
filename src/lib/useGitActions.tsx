@@ -10,19 +10,10 @@
 import { useCallback } from "react";
 
 import { confirm, prompt } from "@/components/Dialog/DialogHost";
+import { focusConflictsIfNeeded } from "@/lib/repoUi";
 import { api } from "@/lib/tauri";
 import type { ResetMode } from "@/lib/types";
 import { useRepo } from "@/store/repoStore";
-
-function focusConflictsIfNeeded(tabId: string) {
-  const tab = useRepo.getState().tabs.find((t) => t.id === tabId);
-  if (!tab || tab.operationState.kind === "none") return;
-  useRepo.getState().setView(tabId, "working");
-  const first = tab.status.conflicted[0];
-  if (first) {
-    useRepo.getState().setSelectFile(tabId, { path: first.path, staged: false });
-  }
-}
 
 export function useGitActions(tabId: string) {
   const withBusy = useRepo((s) => s.withBusy);

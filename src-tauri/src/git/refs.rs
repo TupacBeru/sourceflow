@@ -7,10 +7,38 @@ use crate::error::AppResult;
 use super::repo::open;
 use super::types::{BranchInfo, BranchKind, StashInfo};
 
+/// Branch name to highlight in the sidebar (checked-out, or branch being rebased).
+fn active_branch_name(repo: &Repository) -> Option<String> {
+    if let Ok(head) = repo.head() {
+        if head.is_branch() {
+            return head.shorthand().map(String::from);
+        }
+    }
+    // During `git rebase` HEAD is detached; keep highlighting the original branch.
+    match repo.state() {
+        git2::RepositoryState::RebaseMerge | git2::RepositoryState::RebaseInteractive => {
+            rebase_head_name(repo)
+        }
+        _ => None,
+    }
+}
+
+fn rebase_head_name(repo: &Repository) -> Option<String> {
+    for subdir in ["rebase-merge", "rebase-apply"] {
+        let path = repo.path().join(subdir).join("head-name");
+        if let Ok(bytes) = std::fs::read(&path) {
+            let name = String::from_utf8_lossy(&bytes).trim().to_string();
+            if !name.is_empty() {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
 pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
     let repo = open(path)?;
-    let head_ref = repo.head().ok();
-    let head_name = head_ref.as_ref().and_then(|h| h.shorthand()).map(String::from);
+    let head_name = active_branch_name(&repo);
 
     let mut out = Vec::new();
     for branch in repo.branches(None)?.flatten() {

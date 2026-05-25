@@ -31,6 +31,10 @@ pub enum AppError {
     #[error("invalid argument: {0}")]
     InvalidArg(String),
 
+    /// Fetch succeeded but integrating upstream needs merge or rebase (not FF).
+    #[error("pull is not a fast-forward; choose merge or rebase")]
+    PullNotFastForward,
+
     #[error("{0}")]
     Other(String),
 }
@@ -64,6 +68,7 @@ impl Serialize for AppError {
             AppError::Keyring(_) => "keyring",
             AppError::Config(_) => "config",
             AppError::InvalidArg(_) => "invalid_arg",
+            AppError::PullNotFastForward => "pull_not_ff",
             AppError::Other(_) => "other",
         };
         state.serialize_field("kind", kind)?;
