@@ -68,8 +68,20 @@ window with the launcher icon correctly.
 **Runtime dependencies** (pulled in by the RPM): `webkit2gtk4.1`, `libsecret`,
 `git` (required for merge/rebase and external merge tools).
 
-To rebuild after pulling changes: run `./scripts/build-rpm.sh` again and
-`sudo dnf upgrade src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm`.
+To rebuild after pulling changes: run `./scripts/build-rpm.sh` (it bumps the
+RPM release each time), then:
+
+```bash
+sudo dnf upgrade src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
+```
+
+If dnf reports **Nothing to do**, reinstall the same build:
+
+```bash
+sudo dnf reinstall src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
+```
+
+Quit SourceFlow before upgrading so the binary on disk is replaced.
 
 Other bundle formats (optional): `npm run package:all` builds RPM, AppImage, and deb.
 

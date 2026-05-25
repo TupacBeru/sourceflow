@@ -124,6 +124,9 @@ pub async fn poll_for_token(
         if let Some(token) = resp.access_token {
             return Ok(token);
         }
+        if let Some(i) = resp.interval {
+            interval_secs = i;
+        }
         match resp.error.as_deref() {
             Some("authorization_pending") => continue,
             Some("slow_down") => {

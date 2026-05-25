@@ -9,7 +9,10 @@ cd "$ROOT"
 
 RPM="$(ls -1 "$ROOT/src-tauri/target/release/bundle/rpm"/*.rpm | sort -V | tail -1)"
 echo "==> Installing $RPM"
-sudo dnf install -y "$RPM"
+if ! sudo dnf upgrade -y "$RPM"; then
+  echo "==> Upgrade skipped or failed; reinstalling..."
+  sudo dnf reinstall -y "$RPM"
+fi
 
 echo ""
 echo "Done. SourceFlow is installed:"

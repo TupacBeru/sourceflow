@@ -10,6 +10,17 @@ if ! command -v rpmbuild >/dev/null 2>&1; then
   echo "If packaging fails, install: sudo dnf install rpm-build"
 fi
 
+# Bump RPM release so `dnf upgrade` picks up rebuilds at the same app version.
+CONF="$ROOT/src-tauri/tauri.conf.json"
+if [[ -f "$CONF" ]]; then
+  CURRENT=$(grep -m1 '"release"' "$CONF" | sed -n 's/.*"release": "\([0-9]*\)".*/\1/p')
+  if [[ -n "$CURRENT" ]]; then
+    NEXT=$((CURRENT + 1))
+    sed -i "s/\"release\": \"${CURRENT}\"/\"release\": \"${NEXT}\"/" "$CONF"
+    echo "==> RPM release bumped: ${CURRENT} → ${NEXT}"
+  fi
+fi
+
 echo "==> Building SourceFlow RPM (release)..."
 npm run package
 
@@ -23,7 +34,11 @@ echo ""
 echo "Built:"
 ls -1 "$RPM_DIR"/*.rpm
 echo ""
-echo "Install:"
-echo "  sudo dnf install \"$RPM_DIR\"/*.rpm"
+RPM=$(ls -1 "$RPM_DIR"/*.rpm | sort -V | tail -1)
+echo "Install or refresh an existing install:"
+echo "  sudo dnf upgrade -y \"$RPM\""
 echo ""
-echo "Then launch 'SourceFlow' from the app menu or pin it to your taskbar."
+echo "If upgrade says \"Nothing to do\", force reinstall:"
+echo "  sudo dnf reinstall -y \"$RPM\""
+echo ""
+echo "Then quit any running SourceFlow and launch again from the app menu (or: sourceflow)."
