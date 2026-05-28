@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod clone;
 pub mod config_cmd;
 pub mod conflict;
 pub mod ops;

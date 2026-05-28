@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { FolderOpen } from "lucide-react";
+import { Download, FolderOpen } from "lucide-react";
 
+import { CloneRepositoryDialog } from "@/components/Repo/CloneRepositoryDialog";
 import { useRepo } from "@/store/repoStore";
 
 export function EmptyState() {
   const openRepo = useRepo((s) => s.openRepo);
   const recentlyClosed = useRepo((s) => s.recentlyClosed);
+  const [cloneOpen, setCloneOpen] = useState(false);
 
   const pick = async () => {
     const selected = await open({
@@ -23,19 +26,29 @@ export function EmptyState() {
       <div className="max-w-md text-center">
         <FolderOpen className="mx-auto mb-4 text-zinc-500" size={48} />
         <h1 className="mb-2 text-xl font-semibold text-zinc-100">
-          Open a repository
+          SourceFlow
         </h1>
         <p className="mb-6 text-sm text-zinc-400">
-          Select a folder containing a Git repository to get started. You can
-          open multiple repositories in tabs.
+          Open an existing repository or clone one from GitHub.
         </p>
-        <button
-          onClick={() => void pick()}
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-500"
-        >
-          <FolderOpen size={16} />
-          Choose folder
-        </button>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => void pick()}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-500"
+          >
+            <FolderOpen size={16} />
+            Open a repository
+          </button>
+          <button
+            type="button"
+            onClick={() => setCloneOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-700"
+          >
+            <Download size={16} />
+            Clone a repository
+          </button>
+        </div>
         {recentlyClosed.length > 0 && (
           <div className="mt-8 text-left">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
@@ -45,6 +58,7 @@ export function EmptyState() {
               {recentlyClosed.slice(0, 5).map((path) => (
                 <button
                   key={path}
+                  type="button"
                   onClick={() => void openRepo(path)}
                   className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
                   title={path}
@@ -57,6 +71,10 @@ export function EmptyState() {
           </div>
         )}
       </div>
+      <CloneRepositoryDialog
+        open={cloneOpen}
+        onClose={() => setCloneOpen(false)}
+      />
     </div>
   );
 }

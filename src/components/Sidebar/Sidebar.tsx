@@ -15,6 +15,7 @@ import {
   ContextMenu,
   type ContextMenuItem,
 } from "@/components/ContextMenu/ContextMenu";
+import { localBranchName } from "@/lib/branchName";
 import { cn } from "@/lib/cn";
 import type { BranchInfo } from "@/lib/types";
 import { useGitActions, type GitActions } from "@/lib/useGitActions";
@@ -119,7 +120,7 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
 
   if (!active) return null;
 
-  const checkout = (b: BranchInfo) => void actions.checkoutBranch(b.name);
+  const checkout = (b: BranchInfo) => void actions.checkoutBranch(b);
 
   const toggleFolder = (
     set: Set<string>,
@@ -502,9 +503,7 @@ function branchMenuItems(
   const isRemote = branch.kind === "remote";
   // Remote refs in the sidebar come as "origin/foo"; the libgit2 helpers
   // want the bare local-style name.
-  const localName = isRemote
-    ? branch.name.replace(/^[^/]+\//, "")
-    : branch.name;
+  const localName = localBranchName(branch);
   const remoteName = isRemote ? branch.name.split("/")[0] : null;
   const headLabel = head?.name ?? "current";
 
@@ -513,7 +512,7 @@ function branchMenuItems(
       label: isRemote
         ? `Check out '${localName}' (creates local tracking branch)`
         : `Check out '${branch.name}'`,
-      onClick: () => void actions.checkoutBranch(branch.name),
+      onClick: () => void actions.checkoutBranch(branch),
     });
   }
 

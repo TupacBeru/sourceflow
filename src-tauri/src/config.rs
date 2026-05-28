@@ -44,6 +44,9 @@ pub struct PersistedState {
     /// When set, passed to `git -c merge.tool=<name> mergetool` instead of the
     /// user's global git config.
     pub merge_tool: Option<String>,
+
+    /// Last directory chosen as the parent for "clone into" (Browse).
+    pub last_clone_parent: Option<String>,
 }
 
 fn config_dir() -> AppResult<PathBuf> {
@@ -97,6 +100,21 @@ pub fn load_merge_tool_settings() -> AppResult<crate::git::types::MergeToolSetti
     Ok(crate::git::types::MergeToolSettings {
         merge_tool: state.merge_tool,
     })
+}
+
+pub fn load_last_clone_parent() -> AppResult<Option<String>> {
+    if let Some(p) = load()?.last_clone_parent {
+        return Ok(Some(p));
+    }
+    Ok(dirs::home_dir().map(|h| h.join("Projects").display().to_string()))
+}
+
+pub fn save_last_clone_parent(path: Option<String>) -> AppResult<()> {
+    let mut state = load()?;
+    state.last_clone_parent = path
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    save(&state)
 }
 
 pub fn save_merge_tool_settings(settings: &crate::git::types::MergeToolSettings) -> AppResult<()> {

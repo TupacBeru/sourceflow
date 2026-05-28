@@ -10,9 +10,10 @@
 import { useCallback } from "react";
 
 import { confirm, prompt } from "@/components/Dialog/DialogHost";
+import { localBranchName } from "@/lib/branchName";
 import { focusConflictsIfNeeded } from "@/lib/repoUi";
 import { api } from "@/lib/tauri";
-import type { ResetMode } from "@/lib/types";
+import type { BranchInfo, ResetMode } from "@/lib/types";
 import { useRepo } from "@/store/repoStore";
 
 export function useGitActions(tabId: string) {
@@ -22,12 +23,8 @@ export function useGitActions(tabId: string) {
   // --- Branches ----------------------------------------------------------
 
   const checkoutBranch = useCallback(
-    async (branchName: string) => {
-      // Remote refs come in as "origin/feature-x"; the libgit2 checkout helper
-      // expects the local-style name and will create the tracking branch.
-      const target = branchName.includes("/")
-        ? branchName.replace(/^[^/]+\//, "")
-        : branchName;
+    async (branch: BranchInfo) => {
+      const target = localBranchName(branch);
       await withBusy(`Checking out ${target}...`, () =>
         api.checkoutBranch(tabId, target),
       );

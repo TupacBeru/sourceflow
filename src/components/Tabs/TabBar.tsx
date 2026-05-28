@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { ChevronDown, FolderOpen, Plus, X } from "lucide-react";
+import { ChevronDown, FolderOpen, X } from "lucide-react";
 
 import {
   ContextMenu,
   type ContextMenuItem,
 } from "@/components/ContextMenu/ContextMenu";
+import { NewRepoMenu } from "@/components/Repo/NewRepoMenu";
 import { cn } from "@/lib/cn";
 import { isDirty, useRepo, type TabState } from "@/store/repoStore";
 
@@ -23,18 +23,6 @@ export function TabBar() {
   const [showRecent, setShowRecent] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<DragOverInfo>(null);
-
-  const pickAndOpen = async () => {
-    setShowRecent(false);
-    const selected = await openDialog({
-      directory: true,
-      multiple: false,
-      title: "Open repository",
-    });
-    if (typeof selected === "string") {
-      await openRepo(selected);
-    }
-  };
 
   /// Compute the reordered id array based on where a tab was dropped, then
   /// apply it via the store. Mirrors the same insertion logic used by browser
@@ -105,22 +93,18 @@ export function TabBar() {
         ))}
       </div>
       <div className="relative flex items-stretch border-l border-zinc-800">
-        <button
-          onClick={() => void pickAndOpen()}
-          className="flex items-center gap-1.5 px-4 text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100"
-          title="Open repository"
-        >
-          <Plus size={16} />
-        </button>
-        {recentlyClosed.length > 0 && (
-          <button
-            onClick={() => setShowRecent((v) => !v)}
-            className="flex items-center px-2 text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
-            title="Recently closed repositories"
-          >
-            <ChevronDown size={14} />
-          </button>
-        )}
+        <NewRepoMenu showRecentChevron={recentlyClosed.length > 0}>
+          {recentlyClosed.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowRecent((v) => !v)}
+              className="flex items-center px-2 text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+              title="Recently closed repositories"
+            >
+              <ChevronDown size={14} />
+            </button>
+          )}
+        </NewRepoMenu>
         {showRecent && (
           <RecentlyClosedMenu
             items={recentlyClosed}

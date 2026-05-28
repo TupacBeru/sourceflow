@@ -69,17 +69,18 @@ window with the launcher icon correctly.
 `git` (required for merge/rebase and external merge tools).
 
 To rebuild after pulling changes: run `./scripts/build-rpm.sh` (it bumps the
-RPM release each time), then:
+RPM **release** each time so upgrades are detected), then install the new RPM:
 
 ```bash
-sudo dnf upgrade src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
+./scripts/install-rpm.sh
+# or:
+sudo dnf install -y src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
 ```
 
-If dnf reports **Nothing to do**, reinstall the same build:
-
-```bash
-sudo dnf reinstall src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
-```
+The RPM **filename** is `SourceFlow-…`; the installed package name is
+`source-flow`. Use **`dnf install`**, not `reinstall`, when moving to a new
+build (e.g. `0.1.0-3` → `0.1.0-4`). `dnf reinstall` only works when that
+exact version-release is already installed.
 
 Quit SourceFlow before upgrading so the binary on disk is replaced.
 

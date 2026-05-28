@@ -8,22 +8,25 @@ export function Dialog({
   onClose,
   children,
   width = 420,
+  /** When true, Esc and backdrop clicks do not call `onClose`. */
+  blockClose = false,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   width?: number;
+  blockClose?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !blockClose) onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, blockClose]);
 
   if (!open) return null;
 
@@ -31,6 +34,7 @@ export function Dialog({
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onMouseDown={(e) => {
+        if (blockClose) return;
         if (!cardRef.current?.contains(e.target as Node)) onClose();
       }}
     >
@@ -54,12 +58,16 @@ export function DialogActions({
   onConfirm,
   confirmLabel = "OK",
   confirmDisabled,
+  confirmLoading,
+  cancelDisabled,
   danger,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
   confirmLabel?: string;
   confirmDisabled?: boolean;
+  confirmLoading?: boolean;
+  cancelDisabled?: boolean;
   danger?: boolean;
 }) {
   return (
@@ -67,22 +75,29 @@ export function DialogActions({
       <button
         type="button"
         onClick={onCancel}
-        className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700"
+        disabled={cancelDisabled || confirmLoading}
+        className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Cancel
       </button>
       <button
         type="button"
         onClick={onConfirm}
-        disabled={confirmDisabled}
+        disabled={confirmDisabled || confirmLoading}
         className={cn(
-          "rounded px-3 py-1.5 text-sm font-medium text-white",
+          "inline-flex items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium text-white",
           "disabled:cursor-not-allowed disabled:opacity-50",
           danger
             ? "bg-red-600 hover:bg-red-500"
             : "bg-blue-600 hover:bg-blue-500",
         )}
       >
+        {confirmLoading && (
+          <span
+            className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            aria-hidden
+          />
+        )}
         {confirmLabel}
       </button>
     </div>

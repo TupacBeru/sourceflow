@@ -48,6 +48,9 @@ export const api = {
   checkoutBranch: (tabId: string, branch: string) =>
     tauriInvoke<null>("checkout_branch", { tabId, branch }),
 
+  cloneRepository: (url: string, parentDir: string, folderName: string) =>
+    tauriInvoke<RepoSummary>("clone_repository", { url, parentDir, folderName }),
+
   // Stage
   stageFile: (tabId: string, path: string) =>
     tauriInvoke<null>("stage_file", { tabId, path }),
@@ -177,6 +180,8 @@ export const api = {
     tauriInvoke<null>("set_active_tab", { tabId }),
   pushRecentlyClosed: (path: string) =>
     tauriInvoke<null>("push_recently_closed", { path }),
+  getLastCloneParent: () =>
+    tauriInvoke<string | null>("get_last_clone_parent"),
 };
 
 export type Api = typeof api;

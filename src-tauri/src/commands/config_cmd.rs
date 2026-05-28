@@ -7,6 +7,11 @@ pub fn load_app_state() -> AppResult<PersistedState> {
 }
 
 #[tauri::command]
+pub fn get_last_clone_parent() -> AppResult<Option<String>> {
+    config::load_last_clone_parent()
+}
+
+#[tauri::command]
 pub fn save_app_state(state: PersistedState) -> AppResult<()> {
     config::save(&state)
 }
