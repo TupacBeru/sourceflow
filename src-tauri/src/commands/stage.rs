@@ -46,6 +46,16 @@ pub fn ignore_file(
 }
 
 #[tauri::command]
+pub fn delete_untracked_file(
+    tab_id: String,
+    state: State<AppState>,
+    path: String,
+) -> AppResult<()> {
+    let repo = state.require_tab_path(&tab_id)?;
+    git::stage::delete_untracked_file(&repo, &path)
+}
+
+#[tauri::command]
 pub fn file_diff(
     tab_id: String,
     state: State<AppState>,

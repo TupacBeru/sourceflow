@@ -60,6 +60,8 @@ export const api = {
     tauriInvoke<null>("discard_file", { tabId, path }),
   ignoreFile: (tabId: string, path: string) =>
     tauriInvoke<null>("ignore_file", { tabId, path }),
+  deleteUntrackedFile: (tabId: string, path: string) =>
+    tauriInvoke<null>("delete_untracked_file", { tabId, path }),
   fileDiff: (tabId: string, path: string, staged: boolean) =>
     tauriInvoke<DiffPayload>("file_diff", { tabId, path, staged }),
   commitChanges: (tabId: string, message: string, amend: boolean) =>

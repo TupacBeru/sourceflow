@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use git2::{DiffOptions, IndexAddOption, Repository, Signature, Status, StatusOptions};
 
@@ -140,6 +140,72 @@ pub fn discard_file(path: &Path, file: &str) -> AppResult<()> {
     builder.path(file).force();
     repo.checkout_head(Some(&mut builder))?;
     Ok(())
+}
+
+/// Delete an untracked file or directory from the working tree (not `git rm`).
+pub fn delete_untracked_file(path: &Path, file: &str) -> AppResult<()> {
+    let repo = open(path)?;
+    if !is_untracked(&repo, file)? {
+        return Err(AppError::InvalidArg(format!(
+            "only untracked files can be deleted: {file}"
+        )));
+    }
+    let abs = resolve_worktree_path(&repo, file)?;
+    if abs.is_dir() {
+        std::fs::remove_dir_all(&abs).map_err(AppError::from)?;
+    } else if abs.is_file() {
+        std::fs::remove_file(&abs).map_err(AppError::from)?;
+    } else {
+        return Err(AppError::InvalidArg(format!("path not found: {file}")));
+    }
+    Ok(())
+}
+
+fn is_untracked(repo: &Repository, file: &str) -> AppResult<bool> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+    for entry in statuses.iter() {
+        if entry.path() == Some(file) && entry.status().is_wt_new() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn resolve_worktree_path(repo: &Repository, file: &str) -> AppResult<PathBuf> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+    let rel = Path::new(file);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::RootDir))
+    {
+        return Err(AppError::InvalidArg("invalid path".into()));
+    }
+    let abs = workdir.join(rel);
+    let workdir_canon = workdir
+        .canonicalize()
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    let resolved = if abs.exists() {
+        abs.canonicalize()
+            .map_err(|e| AppError::Other(e.to_string()))?
+    } else {
+        let parent = abs
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .ok_or_else(|| AppError::InvalidArg(format!("path not found: {file}")))?;
+        parent.join(
+            abs.file_name()
+                .ok_or_else(|| AppError::InvalidArg("invalid path".into()))?,
+        )
+    };
+    if !resolved.starts_with(&workdir_canon) {
+        return Err(AppError::InvalidArg("path escapes repository".into()));
+    }
+    Ok(resolved)
 }
 
 /// Append `file` to the repo's `.gitignore`, creating the file if needed.

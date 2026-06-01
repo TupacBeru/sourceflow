@@ -41,6 +41,19 @@ export function FileList() {
     );
     await reloadStatus(tabId);
   };
+  const deleteUntracked = async (path: string) => {
+    if (
+      !confirm(
+        `Delete ${path} from disk? This cannot be undone (file is not in Git).`,
+      )
+    ) {
+      return;
+    }
+    await withBusy(`Deleting ${path}`, () =>
+      api.deleteUntrackedFile(tabId, path),
+    );
+    await reloadStatus(tabId);
+  };
   const stageAll = async (entries: FileEntry[]) => {
     if (entries.length === 0) return;
     await withBusy("Staging files...", async () => {
@@ -148,16 +161,28 @@ export function FileList() {
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
             secondary={
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void ignore(f.path);
-                }}
-                className="text-zinc-500 hover:text-amber-400"
-                title="Add to .gitignore"
-              >
-                <EyeOff size={12} />
-              </button>
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void ignore(f.path);
+                  }}
+                  className="text-zinc-500 hover:text-amber-400"
+                  title="Add to .gitignore"
+                >
+                  <EyeOff size={12} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteUntracked(f.path);
+                  }}
+                  className="text-zinc-500 hover:text-red-400"
+                  title="Delete from disk"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </>
             }
           />
         ))}

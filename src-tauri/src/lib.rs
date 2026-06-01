@@ -57,6 +57,7 @@ pub fn run() {
             commands::stage::unstage_file,
             commands::stage::discard_file,
             commands::stage::ignore_file,
+            commands::stage::delete_untracked_file,
             commands::stage::file_diff,
             commands::stage::commit_changes,
             commands::remote::fetch_all,
