@@ -72,7 +72,8 @@ pub fn commit_changes(
     state: State<AppState>,
     message: String,
     amend: bool,
+    allow_empty: bool,
 ) -> AppResult<String> {
     let repo = state.require_tab_path(&tab_id)?;
-    git::stage::commit_changes(&repo, &message, amend)
+    git::stage::commit_changes(&repo, &message, amend, allow_empty)
 }

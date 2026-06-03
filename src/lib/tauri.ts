@@ -64,8 +64,8 @@ export const api = {
     tauriInvoke<null>("delete_untracked_file", { tabId, path }),
   fileDiff: (tabId: string, path: string, staged: boolean) =>
     tauriInvoke<DiffPayload>("file_diff", { tabId, path, staged }),
-  commitChanges: (tabId: string, message: string, amend: boolean) =>
-    tauriInvoke<string>("commit_changes", { tabId, message, amend }),
+  commitChanges: (tabId: string, message: string, amend: boolean, allowEmpty: boolean = false) =>
+    tauriInvoke<string>("commit_changes", { tabId, message, amend, allowEmpty }),
 
   // Remote
   fetchAll: (tabId: string) => tauriInvoke<null>("fetch_all", { tabId }),

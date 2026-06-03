@@ -315,6 +315,7 @@ pub fn commit_changes(
     path: &Path,
     message: &str,
     amend: bool,
+    allow_empty: bool,
 ) -> AppResult<String> {
     if message.trim().is_empty() && !amend {
         return Err(AppError::InvalidArg("commit message is required".into()));
@@ -324,6 +325,17 @@ pub fn commit_changes(
     let mut index = repo.index()?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
+
+    if !amend && !allow_empty {
+        if let Ok(head) = repo.head() {
+            let head_tree = head.peel_to_tree()?;
+            if tree_oid == head_tree.id() {
+                return Err(AppError::InvalidArg(
+                    "nothing to commit — stage changes or enable allow empty commit".into(),
+                ));
+            }
+        }
+    }
 
     let signature = build_signature(&repo)?;
 
