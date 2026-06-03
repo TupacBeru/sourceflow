@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use git2::{BranchType, FetchOptions, Oid, PushOptions};
+use git2::{BranchType, FetchOptions, Oid};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
@@ -145,7 +145,9 @@ fn pull_rebase(path: &Path, ctx: &PullContext) -> AppResult<()> {
     run_git(path, &["rebase", &ctx.upstream_short])
 }
 
-/// Push the current branch to its upstream remote.
+/// Push the current branch to its upstream remote via the `git` CLI so the
+/// user's credential helper (e.g. `gh auth`) is used. Also updates local
+/// remote-tracking refs the way `git push` does on the command line.
 pub fn push_current(path: &Path) -> AppResult<()> {
     let repo = open(path)?;
     let head = repo.head()?;
@@ -172,12 +174,11 @@ pub fn push_current(path: &Path) -> AppResult<()> {
     drop(local);
     drop(head);
 
-    let mut remote = repo.find_remote(&remote_name)?;
-    let refspec = format!("refs/heads/{branch_name}:refs/heads/{branch_name}");
-    let mut opts = PushOptions::new();
-    opts.remote_callbacks(github_callbacks());
-    remote.push(&[refspec.as_str()], Some(&mut opts))?;
-    Ok(())
+    let root = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+
+    run_git(root, &["push", &remote_name, &branch_name])
 }
 
 /// Compute ahead/behind for HEAD vs its upstream (no fetching - reflects the

@@ -8,15 +8,14 @@
 use std::path::Path;
 
 use git2::{
-    AutotagOption, BranchType, CherrypickOptions, FetchOptions, Oid, PushOptions, RebaseOptions,
-    Repository, ResetType, RevertOptions, Signature,
+    BranchType, CherrypickOptions, Oid, RebaseOptions, Repository, ResetType, RevertOptions,
+    Signature,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-use super::conflict::conflict_checkout_builder;
-use super::credentials::github_callbacks;
+use super::conflict::{conflict_checkout_builder, run_git};
 use super::repo::open;
 
 /// Reset mode mirrors libgit2's `git2::ResetType` but is serde-friendly so the
@@ -387,24 +386,15 @@ pub fn push_branch(path: &Path, branch: &str, set_upstream_remote: Option<&str>)
     };
     drop(local);
 
-    let mut remote = repo.find_remote(&remote_name)?;
-    let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
-    let mut opts = PushOptions::new();
-    opts.remote_callbacks(github_callbacks());
-    remote.push(&[refspec.as_str()], Some(&mut opts))?;
+    let root = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
 
     if set_upstream_remote.is_some() {
-        let mut local = repo.find_branch(branch, BranchType::Local)?;
-        local.set_upstream(Some(&format!("{remote_name}/{branch}")))?;
+        run_git(root, &["push", "-u", &remote_name, branch])?;
+    } else {
+        run_git(root, &["push", &remote_name, branch])?;
     }
-
-    // Make sure remote-tracking refs are in sync so the UI shows the new
-    // ahead/behind right away without waiting for the next background fetch.
-    let mut fetch = FetchOptions::new();
-    fetch.remote_callbacks(github_callbacks());
-    fetch.download_tags(AutotagOption::None);
-    remote.fetch::<&str>(&[], Some(&mut fetch), None).ok();
-
     Ok(())
 }
 
