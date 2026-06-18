@@ -51,6 +51,8 @@ interface RepoStore {
   github: GithubStatus;
   busy: string | null;
   error: string | null;
+  /** True while restoring persisted tabs on startup. */
+  initializing: boolean;
 
   /// Lifecycle.
   init: () => Promise<void>;
@@ -143,13 +145,15 @@ function formatErr(e: unknown): string {
     : String(e);
 }
 
-/// Persist current tab list + active tab to disk.
 async function persistTabs(state: RepoStore) {
   await api
     .saveTabs(state.tabs.map((t) => ({ id: t.id, path: t.path })))
     .catch(() => undefined);
   await api.setActiveTab(state.activeTabId).catch(() => undefined);
 }
+
+/// Dedupe React StrictMode double-mount calling `init()` twice in parallel.
+let initPromise: Promise<void> | null = null;
 
 /// Apply a partial update to a single tab and return a new tabs array.
 function patchTab(
@@ -167,6 +171,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
   github: { connected: false, login: null, has_client_id: false },
   busy: null,
   error: null,
+  initializing: false,
 
   activeTab: () => {
     const { tabs, activeTabId } = get();
@@ -221,60 +226,98 @@ export const useRepo = create<RepoStore>((set, get) => ({
   },
 
   init: async () => {
-    const [persisted, gh] = await Promise.all([
-      api.loadAppState().catch(() => null),
-      api
-        .githubStatus()
-        .catch(
-          () =>
-            ({
-              connected: false,
-              login: null,
-              has_client_id: false,
-            }) as GithubStatus,
-        ),
-    ]);
-    set({ github: gh });
+    if (initPromise) return initPromise;
 
-    if (!persisted) return;
+    initPromise = (async () => {
+      set({ initializing: true, error: null });
 
-    // Legacy migration: if Phase 1 last_repo_path is set but tabs is empty,
-    // adopt it as the first tab.
-    let toRestore = persisted.tabs ?? [];
-    if (toRestore.length === 0 && persisted.last_repo_path) {
-      toRestore = [{ id: newId(), path: persisted.last_repo_path }];
-    }
+      const [persisted, gh] = await Promise.all([
+        api.loadAppState().catch((e) => {
+          set({ error: `Could not load saved session: ${formatErr(e)}` });
+          return null;
+        }),
+        api
+          .githubStatus()
+          .catch(
+            () =>
+              ({
+                connected: false,
+                login: null,
+                has_client_id: false,
+              }) as GithubStatus,
+          ),
+      ]);
+      set({ github: gh });
 
-    set({ recentlyClosed: persisted.recently_closed ?? [] });
+      if (!persisted) return;
 
-    for (const t of toRestore) {
-      // Guard against double-invocation (React StrictMode runs effects twice
-      // in dev) and against the same repo path being persisted twice.
-      if (get().tabs.some((existing) => existing.id === t.id || existing.path === t.path)) {
-        continue;
+      let toRestore = persisted.tabs ?? [];
+      if (toRestore.length === 0 && persisted.last_repo_path) {
+        toRestore = [{ id: newId(), path: persisted.last_repo_path }];
       }
-      try {
-        const summary = await api.openRepository(t.id, t.path);
-        const tab = makeTab(t.id, summary.path);
-        // Re-check after the await - another concurrent init() may have
-        // already pushed this tab while we were waiting on the IPC call.
-        if (get().tabs.some((existing) => existing.id === t.id || existing.path === summary.path)) {
+
+      set({ recentlyClosed: persisted.recently_closed ?? [] });
+
+      const failures: string[] = [];
+
+      for (const t of toRestore) {
+        if (
+          get().tabs.some(
+            (existing) => existing.id === t.id || existing.path === t.path,
+          )
+        ) {
           continue;
         }
-        set((s) => ({ tabs: [...s.tabs, { ...tab, repo: summary }] }));
-        await get().reloadAll(t.id);
-      } catch {
-        // Skip repos that no longer exist on disk - they'll be pruned on next save.
+        try {
+          const summary = await api.openRepository(t.id, t.path);
+          const tab = makeTab(t.id, summary.path);
+          if (
+            get().tabs.some(
+              (existing) =>
+                existing.id === t.id || existing.path === summary.path,
+            )
+          ) {
+            continue;
+          }
+          set((s) => ({
+            tabs: [...s.tabs, { ...tab, repo: summary, loading: true }],
+          }));
+          await get().reloadAll(t.id);
+          set((s) => ({
+            tabs: patchTab(s.tabs, t.id, { loading: false }),
+          }));
+        } catch (e) {
+          failures.push(`${t.path}: ${formatErr(e)}`);
+        }
       }
-    }
 
-    const wanted = persisted.active_tab_id;
-    const fallback = get().tabs[0]?.id ?? null;
-    set({
-      activeTabId: wanted && get().tabs.some((t) => t.id === wanted) ? wanted : fallback,
+      const wanted = persisted.active_tab_id;
+      const fallback = get().tabs[0]?.id ?? null;
+      set({
+        activeTabId:
+          wanted && get().tabs.some((t) => t.id === wanted) ? wanted : fallback,
+      });
+
+      if (toRestore.length > 0 && get().tabs.length === 0) {
+        set({
+          error: `Failed to restore repositories:\n${failures.join("\n")}`,
+        });
+        // Do not persist an empty tab list — keep state.json as-is.
+        return;
+      }
+
+      if (failures.length > 0) {
+        set({
+          error: `Some repositories could not be opened:\n${failures.join("\n")}`,
+        });
+      }
+
+      await persistTabs(get());
+    })().finally(() => {
+      set({ initializing: false });
     });
 
-    await persistTabs(get());
+    return initPromise;
   },
 
   openRepo: async (path) => {
