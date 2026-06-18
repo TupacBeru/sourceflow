@@ -14,6 +14,7 @@ use crate::error::{AppError, AppResult};
 use super::repo::open;
 use super::stage;
 use super::types::{MergeToolSettings, OperationKind, RepoOperationState};
+use super::credentials;
 
 fn repo_root(repo: &Repository, fallback: &Path) -> PathBuf {
     repo.workdir()
@@ -22,9 +23,23 @@ fn repo_root(repo: &Repository, fallback: &Path) -> PathBuf {
 }
 
 pub(crate) fn run_git(root: &Path, args: &[&str]) -> AppResult<()> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(root)
+    run_git_impl(root, args, false)
+}
+
+/// Like `run_git`, but for fetch/push: uses the SourceFlow GitHub token and
+/// never delegates to the system credential helper (no browser popups).
+pub(crate) fn run_git_network(root: &Path, args: &[&str]) -> AppResult<()> {
+    run_git_impl(root, args, true)
+}
+
+fn run_git_impl(root: &Path, args: &[&str], network: bool) -> AppResult<()> {
+    let mut cmd = Command::new("git");
+    cmd.current_dir(root);
+    if network {
+        credentials::configure_network_command(&mut cmd, root)?;
+    }
+    cmd.args(args);
+    let out = cmd
         .output()
         .map_err(|e| AppError::Other(format!("failed to run git: {e}")))?;
     if out.status.success() {

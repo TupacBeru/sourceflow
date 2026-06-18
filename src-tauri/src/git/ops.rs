@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-use super::conflict::{conflict_checkout_builder, run_git};
+use super::conflict::{conflict_checkout_builder, run_git_network};
 use super::repo::open;
 
 /// Reset mode mirrors libgit2's `git2::ResetType` but is serde-friendly so the
@@ -391,9 +391,9 @@ pub fn push_branch(path: &Path, branch: &str, set_upstream_remote: Option<&str>)
         .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
 
     if set_upstream_remote.is_some() {
-        run_git(root, &["push", "-u", &remote_name, branch])?;
+        run_git_network(root, &["push", "-u", &remote_name, branch])?;
     } else {
-        run_git(root, &["push", &remote_name, branch])?;
+        run_git_network(root, &["push", &remote_name, branch])?;
     }
     Ok(())
 }

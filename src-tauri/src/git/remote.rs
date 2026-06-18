@@ -1,12 +1,11 @@
 use std::path::Path;
 
-use git2::{BranchType, FetchOptions, Oid};
+use git2::{BranchType, Oid};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-use super::conflict::run_git;
-use super::credentials::github_callbacks;
+use super::conflict::{run_git, run_git_network};
 use super::repo::open;
 use super::types::AheadBehind;
 
@@ -30,23 +29,14 @@ struct PullContext {
     upstream_short: String,
 }
 
-/// Fetch all configured remotes.
+/// Fetch all configured remotes via the `git` CLI so the user's credential
+/// helper, proxy settings, and remote-tracking ref updates match terminal git.
 pub fn fetch_all(path: &Path) -> AppResult<()> {
     let repo = open(path)?;
-    let names = repo.remotes()?;
-    for name in names.iter().flatten() {
-        let mut remote = repo.find_remote(name)?;
-        let mut opts = FetchOptions::new();
-        opts.remote_callbacks(github_callbacks());
-        opts.prune(git2::FetchPrune::On);
-        let refspecs: Vec<String> = remote
-            .refspecs()
-            .filter_map(|r| r.str().map(String::from))
-            .collect();
-        let refspec_strs: Vec<&str> = refspecs.iter().map(String::as_str).collect();
-        remote.fetch(&refspec_strs, Some(&mut opts), None)?;
-    }
-    Ok(())
+    let root = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+    run_git_network(root, &["fetch", "--all", "--prune"])
 }
 
 /// Pull (fetch + integrate) on the current branch.
@@ -100,14 +90,10 @@ fn fetch_upstream_for_pull(repo: &git2::Repository) -> AppResult<PullContext> {
     drop(upstream);
     drop(head);
 
-    let mut remote = repo.find_remote(&remote_name)?;
-    let mut opts = FetchOptions::new();
-    opts.remote_callbacks(github_callbacks());
-    remote.fetch(
-        &[format!("refs/heads/{branch_name}")],
-        Some(&mut opts),
-        None,
-    )?;
+    let root = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+    run_git_network(root, &["fetch", &remote_name, &branch_name])?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
     let fetch = repo.reference_to_annotated_commit(&fetch_head)?;
@@ -178,7 +164,7 @@ pub fn push_current(path: &Path) -> AppResult<()> {
         .workdir()
         .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
 
-    run_git(root, &["push", &remote_name, &branch_name])
+    run_git_network(root, &["push", &remote_name, &branch_name])
 }
 
 /// Compute ahead/behind for HEAD vs its upstream (no fetching - reflects the

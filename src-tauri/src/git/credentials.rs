@@ -1,17 +1,32 @@
 //! Git credential helpers.
 //!
-//! For HTTPS GitHub remotes we present a short-lived OAuth token as an
-//! "x-access-token" username with the token itself as the password. libgit2
-//! uses these in the smart HTTP protocol the same way GitHub's CLI does.
+//! HTTPS GitHub remotes use the OAuth token stored in the OS keyring when the
+//! user signs in via SourceFlow — no browser popups, same idea as SourceTree.
+//! libgit2 callbacks and `git` CLI subprocesses both go through this module.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::OnceLock;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use git2::{Cred, CredentialType, RemoteCallbacks};
 
 use crate::auth::store;
 use crate::error::{AppError, AppResult};
 
+use super::repo::open;
+
 /// Whether `url` points at GitHub (HTTPS or SCP-style).
 pub fn is_github_url(url: &str) -> bool {
     url.trim().contains("github.com")
+}
+
+/// Whether `url` is an HTTPS GitHub remote (not SSH).
+pub fn is_github_https_url(url: &str) -> bool {
+    let u = url.trim();
+    is_github_url(u) && !u.starts_with("git@") && !u.contains("ssh://")
 }
 
 fn github_https_cred() -> Result<Cred, git2::Error> {
@@ -77,16 +92,79 @@ pub fn github_callbacks<'cb>() -> RemoteCallbacks<'cb> {
 
 /// Pre-flight before push/fetch/pull on a known remote URL.
 pub fn ensure_github_git_auth(remote_url: &str) -> AppResult<()> {
-    if !is_github_url(remote_url) {
+    if !is_github_https_url(remote_url) {
         return Ok(());
-    }
-    if remote_url.starts_with("git@") || remote_url.contains("ssh://") {
-        return Err(AppError::InvalidArg(
-            "this remote uses SSH; SourceFlow uses your GitHub login for HTTPS remotes. \
-             Run: git remote set-url origin https://github.com/OWNER/REPO.git"
-                .into(),
-        ));
     }
     github_https_cred().map_err(AppError::from)?;
     Ok(())
+}
+
+/// Configure a `git` subprocess for fetch/push: inject the SourceFlow GitHub
+/// token and disable the system credential helper so nothing opens a browser.
+pub(crate) fn configure_network_command(cmd: &mut Command, repo_root: &Path) -> AppResult<()> {
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("GCM_INTERACTIVE", "never");
+
+    let repo = open(repo_root)?;
+    let mut needs_github = false;
+    for name in repo.remotes()?.iter().flatten() {
+        let Ok(remote) = repo.find_remote(name) else {
+            continue;
+        };
+        let Some(url) = remote.url() else {
+            continue;
+        };
+        if !is_github_https_url(url) {
+            continue;
+        }
+        ensure_github_git_auth(url)?;
+        needs_github = true;
+    }
+
+    if !needs_github {
+        return Ok(());
+    }
+
+    let token = store::load_github_token()?.ok_or_else(|| {
+        AppError::InvalidArg(
+            "GitHub is not connected — use the GitHub button in SourceFlow to sign in".into(),
+        )
+    })?;
+
+    cmd.env("SOURCEFLOW_GITHUB_TOKEN", &token);
+    let helper = git_credential_helper_script()?;
+
+    // Replace global helpers like git-credential-oauth — never open a browser.
+    cmd.arg("-c").arg("credential.helper=");
+    cmd.arg("-c").arg(format!("credential.helper={}", helper.display()));
+    cmd.arg("-c").arg("credential.interactive=never");
+    cmd.arg("-c").arg("core.askPass=");
+    Ok(())
+}
+
+/// Small credential helper script; token is passed via env so we never embed
+/// secrets on disk. `http.extraHeader` was tried first but makes git/curl hang
+/// ~132s and fail with a misleading "Could not connect to server" error.
+fn git_credential_helper_script() -> AppResult<&'static PathBuf> {
+    static HELPER: OnceLock<PathBuf> = OnceLock::new();
+    Ok(HELPER.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!(
+            "sourceflow-git-credential-{}.sh",
+            std::process::id()
+        ));
+        let script = r#"#!/bin/sh
+case "$1" in
+get)
+    printf '%s\n' "username=x-access-token"
+    printf '%s\n' "password=${SOURCEFLOW_GITHUB_TOKEN}"
+    ;;
+esac
+"#;
+        std::fs::write(&path, script).expect("write git credential helper");
+        #[cfg(unix)]
+        {
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700));
+        }
+        path
+    }))
 }
