@@ -1,3 +1,10 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+} from "react";
 import { Check, EyeOff, Minus, Plus, Trash2, Wrench } from "lucide-react";
 
 import {
@@ -9,69 +16,265 @@ import { api } from "@/lib/tauri";
 import type { FileEntry } from "@/lib/types";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
+type FileSection = "staged" | "unstaged" | "untracked";
+
+type SelectableFile = FileEntry & { section: FileSection };
+
+function fileKey(f: Pick<SelectableFile, "section" | "path">) {
+  return `${f.section}:${f.path}`;
+}
+
 export function FileList() {
   const active = useActiveTab();
   const setSelectFile = useRepo((s) => s.setSelectFile);
   const reloadStatus = useRepo((s) => s.reloadStatus);
   const withBusy = useRepo((s) => s.withBusy);
 
-  if (!active) return null;
-  const tabId = active.id;
-  const status = active.status;
-  const selectFile = active.selectFile;
-  const op = active.operationState;
-  const mergeToolLabel = op.merge_tool_name ?? "external tool";
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [anchorKey, setAnchorKey] = useState<string | null>(null);
 
-  const stage = async (path: string) => {
-    await withBusy(`Staging ${path}`, () => api.stageFile(tabId, path));
-    await reloadStatus(tabId);
-  };
-  const unstage = async (path: string) => {
-    await withBusy(`Unstaging ${path}`, () => api.unstageFile(tabId, path));
-    await reloadStatus(tabId);
-  };
-  const discard = async (path: string) => {
-    if (!confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
-    await withBusy(`Discarding ${path}`, () => api.discardFile(tabId, path));
-    await reloadStatus(tabId);
-  };
-  const ignore = async (path: string) => {
-    await withBusy(`Adding ${path} to .gitignore`, () =>
-      api.ignoreFile(tabId, path),
+  const tabId = active?.id ?? null;
+  const status = active?.status;
+  const selectFile = active?.selectFile;
+  const op = active?.operationState;
+  const mergeToolLabel = op?.merge_tool_name ?? "external tool";
+
+  useEffect(() => {
+    setSelection(new Set());
+    setAnchorKey(null);
+  }, [tabId]);
+
+  const stagedFiles = useMemo<SelectableFile[]>(
+    () => (status?.staged ?? []).map((f) => ({ ...f, section: "staged" as const })),
+    [status?.staged],
+  );
+  const unstagedFiles = useMemo<SelectableFile[]>(
+    () =>
+      (status?.unstaged ?? []).map((f) => ({ ...f, section: "unstaged" as const })),
+    [status?.unstaged],
+  );
+  const untrackedFiles = useMemo<SelectableFile[]>(
+    () =>
+      (status?.untracked ?? []).map((f) => ({ ...f, section: "untracked" as const })),
+    [status?.untracked],
+  );
+
+  const filesByKey = useMemo(() => {
+    const map = new Map<string, SelectableFile>();
+    for (const f of [...stagedFiles, ...unstagedFiles, ...untrackedFiles]) {
+      map.set(fileKey(f), f);
+    }
+    return map;
+  }, [stagedFiles, unstagedFiles, untrackedFiles]);
+
+  const resolveSelection = useCallback(
+    (keys: Iterable<string>) =>
+      [...keys]
+        .map((k) => filesByKey.get(k))
+        .filter((f): f is SelectableFile => Boolean(f)),
+    [filesByKey],
+  );
+
+  if (!active || !status || !tabId) return null;
+
+  const stagePaths = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    await withBusy(
+      paths.length === 1 ? `Staging ${paths[0]}` : `Staging ${paths.length} files…`,
+      async () => {
+        for (const path of paths) await api.stageFile(tabId, path);
+      },
     );
     await reloadStatus(tabId);
   };
-  const deleteUntracked = async (path: string) => {
-    if (
-      !confirm(
-        `Delete ${path} from disk? This cannot be undone (file is not in Git).`,
-      )
-    ) {
+
+  const unstagePaths = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    await withBusy(
+      paths.length === 1
+        ? `Unstaging ${paths[0]}`
+        : `Unstaging ${paths.length} files…`,
+      async () => {
+        for (const path of paths) await api.unstageFile(tabId, path);
+      },
+    );
+    await reloadStatus(tabId);
+  };
+
+  const discardPaths = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    const msg =
+      paths.length === 1
+        ? `Discard changes to ${paths[0]}? This cannot be undone.`
+        : `Discard changes to ${paths.length} files? This cannot be undone.`;
+    if (!confirm(msg)) return;
+    await withBusy(
+      paths.length === 1
+        ? `Discarding ${paths[0]}`
+        : `Discarding ${paths.length} files…`,
+      async () => {
+        for (const path of paths) await api.discardFile(tabId, path);
+      },
+    );
+    setSelection(new Set());
+    await reloadStatus(tabId);
+  };
+
+  const ignorePaths = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    await withBusy(
+      paths.length === 1
+        ? `Adding ${paths[0]} to .gitignore`
+        : `Ignoring ${paths.length} files…`,
+      async () => {
+        for (const path of paths) await api.ignoreFile(tabId, path);
+      },
+    );
+    await reloadStatus(tabId);
+  };
+
+  const deleteUntrackedPaths = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    const msg =
+      paths.length === 1
+        ? `Delete ${paths[0]} from disk? This cannot be undone (not in Git).`
+        : `Delete ${paths.length} untracked files from disk? This cannot be undone.`;
+    if (!confirm(msg)) return;
+    await withBusy(
+      paths.length === 1 ? `Deleting ${paths[0]}` : `Deleting ${paths.length} files…`,
+      async () => {
+        for (const path of paths) await api.deleteUntrackedFile(tabId, path);
+      },
+    );
+    setSelection(new Set());
+    await reloadStatus(tabId);
+  };
+
+  const stageAll = async (entries: FileEntry[]) => {
+    await stagePaths(entries.map((e) => e.path));
+  };
+
+  const unstageAll = async (entries: FileEntry[]) => {
+    await unstagePaths(entries.map((e) => e.path));
+  };
+
+  const selectRange = (list: SelectableFile[], fromKey: string, toKey: string) => {
+    const fromIdx = list.findIndex((f) => fileKey(f) === fromKey);
+    const toIdx = list.findIndex((f) => fileKey(f) === toKey);
+    if (fromIdx < 0 || toIdx < 0) return new Set([toKey]);
+    const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+    return new Set(list.slice(lo, hi + 1).map(fileKey));
+  };
+
+  const handleRowClick = (
+    e: MouseEvent,
+    file: SelectableFile,
+    sectionList: SelectableFile[],
+  ) => {
+    const key = fileKey(file);
+    setSelectFile(tabId, {
+      path: file.path,
+      staged: file.section === "staged",
+    });
+
+    if (e.shiftKey && anchorKey) {
+      setSelection(selectRange(sectionList, anchorKey, key));
       return;
     }
-    await withBusy(`Deleting ${path}`, () =>
-      api.deleteUntrackedFile(tabId, path),
-    );
-    await reloadStatus(tabId);
+
+    if (e.ctrlKey || e.metaKey) {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      setAnchorKey(key);
+      return;
+    }
+
+    setSelection(new Set([key]));
+    setAnchorKey(key);
   };
-  const stageAll = async (entries: FileEntry[]) => {
-    if (entries.length === 0) return;
-    await withBusy("Staging files...", async () => {
-      for (const e of entries) await api.stageFile(tabId, e.path);
+
+  const ensureContextSelection = (file: SelectableFile) => {
+    const key = fileKey(file);
+    setSelection((prev) => (prev.has(key) ? prev : new Set([key])));
+    setAnchorKey(key);
+    setSelectFile(tabId, {
+      path: file.path,
+      staged: file.section === "staged",
     });
-    await reloadStatus(tabId);
   };
-  const unstageAll = async (entries: FileEntry[]) => {
-    if (entries.length === 0) return;
-    await withBusy("Unstaging files...", async () => {
-      for (const e of entries) await api.unstageFile(tabId, e.path);
-    });
-    await reloadStatus(tabId);
+
+  const menuForFiles = (files: SelectableFile[]): ContextMenuItem[] => {
+    if (files.length === 0) return [];
+
+    const staged = files.filter((f) => f.section === "staged");
+    const unstaged = files.filter((f) => f.section === "unstaged");
+    const untracked = files.filter((f) => f.section === "untracked");
+    const toStage = [...unstaged, ...untracked];
+    const toDiscard = [...staged, ...unstaged];
+
+    const items: ContextMenuItem[] = [];
+
+    if (toStage.length > 0) {
+      items.push({
+        label: toStage.length === 1 ? "Stage" : `Stage ${toStage.length} files`,
+        icon: <Plus size={12} />,
+        onClick: () => void stagePaths(toStage.map((f) => f.path)),
+      });
+    }
+    if (staged.length > 0) {
+      items.push({
+        label:
+          staged.length === 1 ? "Unstage" : `Unstage ${staged.length} files`,
+        icon: <Minus size={12} />,
+        onClick: () => void unstagePaths(staged.map((f) => f.path)),
+      });
+    }
+    if (items.length > 0) items.push({ type: "separator" });
+
+    if (toDiscard.length > 0) {
+      items.push({
+        label:
+          toDiscard.length === 1
+            ? "Discard changes"
+            : `Discard changes (${toDiscard.length})`,
+        icon: <Trash2 size={12} />,
+        danger: true,
+        onClick: () => void discardPaths(toDiscard.map((f) => f.path)),
+      });
+    }
+    if (untracked.length > 0) {
+      items.push({
+        label:
+          untracked.length === 1
+            ? "Delete from disk"
+            : `Delete from disk (${untracked.length})`,
+        icon: <Trash2 size={12} />,
+        danger: true,
+        onClick: () => void deleteUntrackedPaths(untracked.map((f) => f.path)),
+      });
+    }
+    if (files.length > 0) {
+      items.push({
+        label:
+          files.length === 1
+            ? "Add to .gitignore"
+            : `Add to .gitignore (${files.length})`,
+        icon: <EyeOff size={12} />,
+        onClick: () => void ignorePaths(files.map((f) => f.path)),
+      });
+    }
+
+    return items;
   };
 
   const toStage = [...status.unstaged, ...status.untracked];
   const canStageAll = toStage.length > 0;
   const canUnstageAll = status.staged.length > 0;
+  const selectionCount = selection.size;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-thin">
@@ -88,16 +291,23 @@ export function FileList() {
         >
           Unstage All
         </ActionButton>
+        {selectionCount > 1 && (
+          <span className="ml-auto text-[10px] text-zinc-500">
+            {selectionCount} selected
+          </span>
+        )}
       </div>
       <Group label="Staged" count={status.staged.length}>
-        {status.staged.map((f) => (
+        {stagedFiles.map((f) => (
           <FileRow
             key={`s-${f.path}`}
             file={f}
             staged
-            selected={selectFile?.path === f.path && selectFile.staged}
-            onSelect={() => setSelectFile(tabId, { path: f.path, staged: true })}
-            onPrimary={() => void unstage(f.path)}
+            selected={selection.has(fileKey(f))}
+            onClick={(e) => handleRowClick(e, f, stagedFiles)}
+            onContextMenu={() => ensureContextSelection(f)}
+            menuItems={() => menuForFiles(resolveSelection(selection))}
+            onPrimary={() => void unstagePaths([f.path])}
             primaryIcon={<Minus size={12} />}
             primaryTitle="Unstage"
           />
@@ -106,84 +316,36 @@ export function FileList() {
       </Group>
 
       <Group label="Unstaged" count={status.unstaged.length}>
-        {status.unstaged.map((f) => (
+        {unstagedFiles.map((f) => (
           <FileRow
             key={`u-${f.path}`}
             file={f}
             staged={false}
-            selected={selectFile?.path === f.path && !selectFile.staged}
-            onSelect={() =>
-              setSelectFile(tabId, { path: f.path, staged: false })
-            }
-            onPrimary={() => void stage(f.path)}
+            selected={selection.has(fileKey(f))}
+            onClick={(e) => handleRowClick(e, f, unstagedFiles)}
+            onContextMenu={() => ensureContextSelection(f)}
+            menuItems={() => menuForFiles(resolveSelection(selection))}
+            onPrimary={() => void stagePaths([f.path])}
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
-            secondary={
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void ignore(f.path);
-                  }}
-                  className="text-zinc-500 hover:text-amber-400"
-                  title="Add to .gitignore"
-                >
-                  <EyeOff size={12} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void discard(f.path);
-                  }}
-                  className="text-zinc-500 hover:text-red-400"
-                  title="Discard changes"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </>
-            }
           />
         ))}
         {status.unstaged.length === 0 && <Empty text="No unstaged changes" />}
       </Group>
 
       <Group label="Untracked" count={status.untracked.length}>
-        {status.untracked.map((f) => (
+        {untrackedFiles.map((f) => (
           <FileRow
             key={`n-${f.path}`}
             file={f}
             staged={false}
-            selected={selectFile?.path === f.path && !selectFile.staged}
-            onSelect={() =>
-              setSelectFile(tabId, { path: f.path, staged: false })
-            }
-            onPrimary={() => void stage(f.path)}
+            selected={selection.has(fileKey(f))}
+            onClick={(e) => handleRowClick(e, f, untrackedFiles)}
+            onContextMenu={() => ensureContextSelection(f)}
+            menuItems={() => menuForFiles(resolveSelection(selection))}
+            onPrimary={() => void stagePaths([f.path])}
             primaryIcon={<Plus size={12} />}
             primaryTitle="Stage"
-            secondary={
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void ignore(f.path);
-                  }}
-                  className="text-zinc-500 hover:text-amber-400"
-                  title="Add to .gitignore"
-                >
-                  <EyeOff size={12} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void deleteUntracked(f.path);
-                  }}
-                  className="text-zinc-500 hover:text-red-400"
-                  title="Delete from disk"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </>
-            }
           />
         ))}
         {status.untracked.length === 0 && <Empty text="No untracked files" />}
@@ -267,47 +429,56 @@ function FileRow({
   file,
   staged,
   selected,
-  onSelect,
+  onClick,
+  onContextMenu,
+  menuItems,
   onPrimary,
   primaryIcon,
   primaryTitle,
-  secondary,
 }: {
   file: FileEntry;
   staged: boolean;
   selected: boolean;
-  onSelect: () => void;
+  onClick: (e: MouseEvent) => void;
+  onContextMenu: () => void;
+  menuItems: () => ContextMenuItem[];
   onPrimary: () => void;
   primaryIcon: React.ReactNode;
   primaryTitle: string;
-  secondary?: React.ReactNode;
 }) {
   return (
-    <div
-      onClick={onSelect}
-      className={cn(
-        "group flex cursor-pointer items-center gap-2 px-3 py-1 text-xs",
-        selected ? "bg-zinc-800/80" : "hover:bg-zinc-800/40",
-      )}
-    >
-      <StatusBadge status={file.status} staged={staged} />
-      <span className="flex-1 truncate font-mono text-[11px] text-zinc-200">
-        {file.path}
-      </span>
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
-        {secondary}
+    <ContextMenu items={menuItems}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onClick(e as unknown as MouseEvent);
+        }}
+        className={cn(
+          "group flex cursor-pointer items-center gap-2 px-3 py-1 text-xs",
+          selected ? "bg-sky-900/40 ring-1 ring-inset ring-sky-700/50" : "hover:bg-zinc-800/40",
+        )}
+        title="Ctrl+click to multi-select · Shift+click for range · Right-click for actions"
+      >
+        <StatusBadge status={file.status} staged={staged} />
+        <span className="flex-1 truncate font-mono text-[11px] text-zinc-200">
+          {file.path}
+        </span>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onPrimary();
           }}
-          className="text-zinc-300 hover:text-zinc-100"
+          className="rounded p-0.5 text-zinc-400 opacity-0 hover:bg-zinc-700 hover:text-zinc-100 group-hover:opacity-100"
           title={primaryTitle}
         >
           {primaryIcon}
         </button>
       </div>
-    </div>
+    </ContextMenu>
   );
 }
 

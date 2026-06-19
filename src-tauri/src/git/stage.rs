@@ -4,6 +4,7 @@ use git2::{DiffOptions, IndexAddOption, Repository, Signature, Status, StatusOpt
 
 use crate::error::{AppError, AppResult};
 
+use super::conflict::run_git;
 use super::repo::open;
 use super::types::{DiffPayload, FileEntry, FileStatus, WorkingStatus};
 
@@ -134,12 +135,31 @@ pub fn unstage_file(path: &Path, file: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Restore a path to HEAD in both the index and working tree (`git restore`).
 pub fn discard_file(path: &Path, file: &str) -> AppResult<()> {
     let repo = open(path)?;
-    let mut builder = git2::build::CheckoutBuilder::new();
-    builder.path(file).force();
-    repo.checkout_head(Some(&mut builder))?;
-    Ok(())
+    let root = repo
+        .workdir()
+        .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
+    let has_head = repo.head().is_ok();
+
+    if has_head {
+        run_git(
+            root,
+            &[
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                file,
+            ],
+        )
+    } else {
+        unstage_file(path, file)?;
+        let _ = delete_untracked_file(path, file);
+        Ok(())
+    }
 }
 
 /// Delete an untracked file or directory from the working tree (not `git rm`).
