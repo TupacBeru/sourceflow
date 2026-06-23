@@ -47,9 +47,10 @@ pub fn commit_history(
     tab_id: String,
     state: State<AppState>,
     limit: Option<usize>,
+    all_refs: Option<bool>,
 ) -> AppResult<Vec<CommitInfo>> {
     let path = state.require_tab_path(&tab_id)?;
-    git::repo::commit_history(&path, limit.unwrap_or(2000))
+    git::repo::commit_history(&path, limit.unwrap_or(2000), all_refs.unwrap_or(true))
 }
 
 #[tauri::command]

@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { relativeTime } from "@/lib/format";
 import { useGitActions, type GitActions } from "@/lib/useGitActions";
 import { useResizableSplit } from "@/lib/useResizableSplit";
-import type { CommitInfo } from "@/lib/types";
+import type { BranchInfo, CommitInfo } from "@/lib/types";
 import { useActiveTab, useRepo } from "@/store/repoStore";
 
 import { CommitDetails } from "./CommitDetails";
@@ -18,6 +18,7 @@ import { GraphCell, ROW_HEIGHT, computeGraphWidth } from "./GraphCell";
 export function HistoryView() {
   const active = useActiveTab();
   const setSelected = useRepo((s) => s.setSelectedCommit);
+  const setHistoryScope = useRepo((s) => s.setHistoryScope);
   const actions = useGitActions(active?.id ?? "");
 
   const parentRef = useRef<HTMLDivElement | null>(null);
@@ -48,20 +49,39 @@ export function HistoryView() {
 
   if (!active) return null;
 
-  if (active.commits.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
-        No commits yet
-      </div>
-    );
-  }
-
   const headSha = active.repo?.head_sha ?? null;
   const items = virtualizer.getVirtualItems();
   const hasSelected = !!active.selectedCommit;
   const headBranchName = active.branches.find((b) => b.is_head)?.name ?? null;
+  const branches = active.branches;
+  const scope = active.historyScope;
+  const tabId = active.id;
   return (
     <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800/80 px-3 py-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          History
+        </span>
+        <div className="ml-auto flex items-center overflow-hidden rounded border border-zinc-700/70">
+          <ScopeButton
+            active={scope === "all"}
+            onClick={() => void setHistoryScope(tabId, "all")}
+          >
+            All branches
+          </ScopeButton>
+          <ScopeButton
+            active={scope === "current"}
+            onClick={() => void setHistoryScope(tabId, "current")}
+          >
+            Current branch
+          </ScopeButton>
+        </div>
+      </div>
+      {active.commits.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+          No commits yet
+        </div>
+      ) : (
       <div
         ref={parentRef}
         className="min-h-0 flex-1 overflow-auto scrollbar-thin"
@@ -83,7 +103,7 @@ export function HistoryView() {
             <ContextMenu
               key={c.sha}
               items={() =>
-                commitMenuItems(c, actions, headBranchName, isHead)
+                commitMenuItems(c, actions, branches, headBranchName, isHead)
               }
             >
               <button
@@ -134,6 +154,7 @@ export function HistoryView() {
         })}
       </div>
       </div>
+      )}
       {hasSelected && (
         <>
           <div {...splitterProps} title="Drag to resize" />
@@ -149,15 +170,68 @@ export function HistoryView() {
   );
 }
 
+function ScopeButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "px-2 py-0.5 text-[10px] font-medium transition-colors",
+        active
+          ? "bg-zinc-700 text-zinc-100"
+          : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Right-click menu for a commit row. */
 function commitMenuItems(
   c: CommitInfo,
   actions: GitActions,
+  branches: BranchInfo[],
   headBranchName: string | null,
   isHead: boolean,
 ): ContextMenuItem[] {
   const short = c.short_sha;
+
+  // Local branches that point at this commit (other than the one we're on) -
+  // these enable SourceTree-style "merge a branch straight from the graph".
+  const localBranchesHere = branches.filter(
+    (b) => b.kind === "local" && !b.is_head && c.refs.includes(b.name),
+  );
+
+  const branchItems: ContextMenuItem[] = [];
+  for (const b of localBranchesHere) {
+    branchItems.push({
+      label: `Check out '${b.name}'`,
+      onClick: () => void actions.checkoutBranch(b),
+    });
+    if (headBranchName) {
+      branchItems.push({
+        label: `Merge '${b.name}' into ${headBranchName}`,
+        onClick: () => void actions.mergeBranch(b.name, headBranchName),
+      });
+      branchItems.push({
+        label: `Rebase ${headBranchName} onto '${b.name}'`,
+        onClick: () => void actions.rebaseOnto(b.name, headBranchName),
+      });
+    }
+  }
+  if (branchItems.length > 0) branchItems.push({ type: "separator" });
+
   const items: ContextMenuItem[] = [
+    ...branchItems,
     {
       label: `Check out ${short} (detached)`,
       disabled: isHead,

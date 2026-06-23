@@ -52,21 +52,35 @@ pub fn summarize(path: &Path) -> AppResult<RepoSummary> {
     })
 }
 
-/// Walk the commit graph starting from HEAD (topological + time sort).
+/// Walk the commit graph (topological + time sort).
+///
+/// When `all_refs` is true we seed the walk from every local and remote branch
+/// tip (plus HEAD) so the full tree is visible - the way SourceTree shows "All
+/// branches". When false we only walk from HEAD (current branch).
 ///
 /// `limit` caps how many commits we materialize - the frontend virtualizes
 /// the list anyway, but on huge repos we don't want to push 100k entries
 /// across the IPC boundary in one go. Phase 2 will switch to a paginated
 /// stream.
-pub fn commit_history(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
+pub fn commit_history(path: &Path, limit: usize, all_refs: bool) -> AppResult<Vec<CommitInfo>> {
     let repo = open(path)?;
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TIME | Sort::TOPOLOGICAL)?;
 
-    if repo.head().is_err() {
-        return Ok(Vec::new());
+    if all_refs {
+        // Seed from all branch tips. Globs that match nothing are a no-op, so
+        // this is safe on a fresh repo with no commits yet.
+        walk.push_glob("refs/heads/*")?;
+        walk.push_glob("refs/remotes/*")?;
+        // Also include the current position (e.g. a detached HEAD that isn't a
+        // branch tip) so it never disappears from the graph.
+        let _ = walk.push_head();
+    } else {
+        if repo.head().is_err() {
+            return Ok(Vec::new());
+        }
+        walk.push_head()?;
     }
-    walk.push_head()?;
 
     let refs_by_sha = collect_refs_by_sha(&repo);
 

@@ -29,8 +29,8 @@ export const api = {
     tauriInvoke<null>("close_repository", { tabId }),
   repositorySummary: (tabId: string) =>
     tauriInvoke<RepoSummary | null>("repository_summary", { tabId }),
-  commitHistory: (tabId: string, limit?: number) =>
-    tauriInvoke<CommitInfo[]>("commit_history", { tabId, limit }),
+  commitHistory: (tabId: string, limit?: number, allRefs: boolean = true) =>
+    tauriInvoke<CommitInfo[]>("commit_history", { tabId, limit, allRefs }),
   workingStatus: (tabId: string) =>
     tauriInvoke<WorkingStatus>("working_status", { tabId }),
   commitFiles: (tabId: string, sha: string) =>

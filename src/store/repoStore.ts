@@ -14,6 +14,10 @@ import type {
 
 export type MainView = "history" | "working";
 
+/// Which refs the commit graph is seeded from. "all" shows every branch (like
+/// SourceTree's "All branches"); "current" walks only from HEAD.
+export type HistoryScope = "all" | "current";
+
 /// Per-tab state. Each open repository has its own slice.
 export interface TabState {
   id: string;
@@ -24,6 +28,8 @@ export interface TabState {
   repo: RepoSummary | null;
   loading: boolean;
   view: MainView;
+  /// Whether the commit graph shows all branches or just the current one.
+  historyScope: HistoryScope;
   branches: BranchInfo[];
   stashes: StashInfo[];
   commits: CommitInfo[];
@@ -66,6 +72,9 @@ interface RepoStore {
 
   /// Per-tab mutations.
   setView: (tabId: string, view: MainView) => void;
+  /// Switch the commit graph between all-branches and current-branch, then
+  /// reload the commit list to reflect it.
+  setHistoryScope: (tabId: string, scope: HistoryScope) => Promise<void>;
   setSelectedCommit: (tabId: string, sha: string | null) => void;
   setSelectedCommitFile: (tabId: string, file: string | null) => void;
   setSelectFile: (
@@ -120,6 +129,7 @@ function makeTab(id: string, path: string): TabState {
     repo: null,
     loading: false,
     view: "history",
+    historyScope: "all",
     branches: [],
     stashes: [],
     commits: [],
@@ -180,6 +190,15 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   setView: (tabId, view) =>
     set((s) => ({ tabs: patchTab(s.tabs, tabId, { view }) })),
+
+  setHistoryScope: async (tabId, scope) => {
+    if (!get().tabs.some((t) => t.id === tabId)) return;
+    set((s) => ({ tabs: patchTab(s.tabs, tabId, { historyScope: scope }) }));
+    const commits = await api
+      .commitHistory(tabId, 2000, scope === "all")
+      .catch(() => [] as CommitInfo[]);
+    set((s) => ({ tabs: patchTab(s.tabs, tabId, { commits }) }));
+  },
 
   setSelectedCommit: (tabId, sha) =>
     set((s) => ({
@@ -397,11 +416,12 @@ export const useRepo = create<RepoStore>((set, get) => ({
   },
 
   reloadAll: async (tabId) => {
+    const scope = get().tabs.find((t) => t.id === tabId)?.historyScope ?? "all";
     if (!get().tabs.some((t) => t.id === tabId)) return;
     const [branches, stashes, commits, status, ab, op] = await Promise.all([
       api.listBranches(tabId).catch(() => [] as BranchInfo[]),
       api.listStashes(tabId).catch(() => [] as StashInfo[]),
-      api.commitHistory(tabId, 2000).catch(() => [] as CommitInfo[]),
+      api.commitHistory(tabId, 2000, scope === "all").catch(() => [] as CommitInfo[]),
       api.workingStatus(tabId).catch(() => EMPTY_STATUS),
       api.aheadBehind(tabId).catch(() => EMPTY_AB),
       api.repositoryOperationState(tabId).catch(() => EMPTY_OP),
