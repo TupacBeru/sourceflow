@@ -104,6 +104,11 @@ pub fn ensure_github_git_auth(remote_url: &str) -> AppResult<()> {
 pub(crate) fn configure_network_command(cmd: &mut Command, repo_root: &Path) -> AppResult<()> {
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     cmd.env("GCM_INTERACTIVE", "never");
+    // No git subprocess we spawn may ever prompt interactively or pop up an
+    // askpass/browser dialog, GitHub remote or not. Non-interactive helpers
+    // (e.g. cached credentials for other hosts) still work.
+    cmd.arg("-c").arg("credential.interactive=never");
+    cmd.arg("-c").arg("core.askPass=");
 
     let repo = open(repo_root)?;
     let mut needs_github = false;
@@ -111,14 +116,15 @@ pub(crate) fn configure_network_command(cmd: &mut Command, repo_root: &Path) -> 
         let Ok(remote) = repo.find_remote(name) else {
             continue;
         };
-        let Some(url) = remote.url() else {
-            continue;
-        };
-        if !is_github_https_url(url) {
-            continue;
+        // A remote can have distinct fetch and push URLs; either may be a
+        // GitHub HTTPS URL (e.g. SSH fetch + HTTPS push).
+        for url in [remote.url(), remote.pushurl()].into_iter().flatten() {
+            if !is_github_https_url(url) {
+                continue;
+            }
+            ensure_github_git_auth(url)?;
+            needs_github = true;
         }
-        ensure_github_git_auth(url)?;
-        needs_github = true;
     }
 
     if !needs_github {
@@ -134,11 +140,14 @@ pub(crate) fn configure_network_command(cmd: &mut Command, repo_root: &Path) -> 
     cmd.env("SOURCEFLOW_GITHUB_TOKEN", &token);
     let helper = git_credential_helper_script()?;
 
-    // Replace global helpers like git-credential-oauth — never open a browser.
-    cmd.arg("-c").arg("credential.helper=");
-    cmd.arg("-c").arg(format!("credential.helper={}", helper.display()));
-    cmd.arg("-c").arg("credential.interactive=never");
-    cmd.arg("-c").arg("core.askPass=");
+    // Replace helpers for github.com only (empty value resets the inherited
+    // helper list, e.g. git-credential-oauth which opens a browser). Other
+    // hosts keep whatever helpers the user configured.
+    cmd.arg("-c").arg("credential.https://github.com.helper=");
+    cmd.arg("-c").arg(format!(
+        "credential.https://github.com.helper={}",
+        helper.display()
+    ));
     Ok(())
 }
 

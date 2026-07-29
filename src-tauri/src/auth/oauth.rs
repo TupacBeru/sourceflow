@@ -61,9 +61,22 @@ pub fn resolve_client_id() -> AppResult<String> {
     ))
 }
 
-/// Scopes we request. `repo` covers private + public, `read:user` lets us
-/// show the avatar / username in the UI later.
-const SCOPES: &str = "repo,read:user";
+/// Scopes we request. `repo` covers private + public, `workflow` is needed to
+/// push commits touching `.github/workflows/*` (GitHub rejects those from
+/// OAuth tokens without it), `read:user` lets us show the avatar / username
+/// in the UI later.
+const SCOPES: &str = "repo,workflow,read:user";
+
+/// Scopes a stored token must carry for SourceFlow to work fully. Tokens
+/// issued before `workflow` was added lack it; the UI prompts a one-time
+/// re-authorization instead of letting pushes fail cryptically.
+const REQUIRED_SCOPES: &[&str] = &["repo", "workflow"];
+
+pub fn has_required_scopes(scopes: &[String]) -> bool {
+    REQUIRED_SCOPES
+        .iter()
+        .all(|req| scopes.iter().any(|s| s == req))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceCodeResponse {
@@ -150,19 +163,41 @@ struct UserInfo {
     login: String,
 }
 
-/// Fetch the authenticated user's login - used to confirm the token works
-/// and to show "Connected as @{login}" in the UI.
-pub async fn fetch_login(token: &str) -> AppResult<String> {
+/// Login + scopes attached to a token, from `GET /user`.
+#[derive(Debug, Clone)]
+pub struct TokenUser {
+    pub login: String,
+    /// OAuth scopes granted to the token, from the `X-OAuth-Scopes` header.
+    pub scopes: Vec<String>,
+}
+
+/// Fetch the authenticated user's login and the token's granted scopes -
+/// used to confirm the token works, to show "Connected as @{login}" in the
+/// UI, and to detect tokens issued before new scopes were required.
+pub async fn fetch_user(token: &str) -> AppResult<TokenUser> {
     let client = reqwest::Client::new();
-    let resp: UserInfo = client
+    let resp = client
         .get("https://api.github.com/user")
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "sourceflow")
         .bearer_auth(token)
         .send()
         .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    Ok(resp.login)
+        .error_for_status()?;
+    let scopes = resp
+        .headers()
+        .get("x-oauth-scopes")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let user: UserInfo = resp.json().await?;
+    Ok(TokenUser {
+        login: user.login,
+        scopes,
+    })
 }

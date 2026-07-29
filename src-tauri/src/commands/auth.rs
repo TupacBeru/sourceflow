@@ -13,6 +13,10 @@ pub struct GithubStatus {
     /// env, or compiled-in). The UI uses this to decide whether to show the
     /// "Connect" button or the "Set client_id first" prompt.
     pub has_client_id: bool,
+    /// The stored token works but is missing scopes we now require (e.g.
+    /// `workflow`). The UI shows a one-time "update permissions" prompt; the
+    /// token keeps working for everything else in the meantime.
+    pub needs_reauth: bool,
 }
 
 /// Initiate the GitHub Device Flow.
@@ -46,7 +50,7 @@ pub async fn start_github_oauth(
     let token =
         oauth::poll_for_token(&client_id, &device.device_code, device.interval).await?;
     store::save_github_token(&token)?;
-    let login = oauth::fetch_login(&token).await?;
+    let login = oauth::fetch_user(&token).await?.login;
     Ok(OauthResult { login })
 }
 
@@ -58,6 +62,7 @@ pub async fn github_status() -> AppResult<GithubStatus> {
             connected: false,
             login: None,
             has_client_id,
+            needs_reauth: false,
         });
     };
     // Validate by hitting /user. Only delete the token if GitHub explicitly
@@ -65,11 +70,12 @@ pub async fn github_status() -> AppResult<GithubStatus> {
     // DNS, 5xx) leave the token in place so we auto-reconnect once the
     // network comes back. Without this guard, starting the app while WiFi
     // is still re-associating would nuke the token on every boot.
-    match oauth::fetch_login(&token).await {
-        Ok(login) => Ok(GithubStatus {
+    match oauth::fetch_user(&token).await {
+        Ok(user) => Ok(GithubStatus {
             connected: true,
-            login: Some(login),
+            login: Some(user.login),
             has_client_id,
+            needs_reauth: !oauth::has_required_scopes(&user.scopes),
         }),
         Err(AppError::Network(ref e))
             if matches!(e.status().map(|s| s.as_u16()), Some(401) | Some(403)) =>
@@ -79,12 +85,14 @@ pub async fn github_status() -> AppResult<GithubStatus> {
                 connected: false,
                 login: None,
                 has_client_id,
+                needs_reauth: false,
             })
         }
         Err(_) => Ok(GithubStatus {
             connected: false,
             login: None,
             has_client_id,
+            needs_reauth: false,
         }),
     }
 }

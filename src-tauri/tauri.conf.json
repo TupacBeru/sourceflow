@@ -55,7 +55,7 @@
           "dbus-libs"
         ],
         "desktopTemplate": "sourceflow.desktop.template",
-        "release": "20"
+        "release": "21"
       },
       "appimage": {
         "bundleMediaFramework": false

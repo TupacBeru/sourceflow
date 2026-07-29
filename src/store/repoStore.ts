@@ -178,7 +178,12 @@ export const useRepo = create<RepoStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
   recentlyClosed: [],
-  github: { connected: false, login: null, has_client_id: false },
+  github: {
+    connected: false,
+    login: null,
+    has_client_id: false,
+    needs_reauth: false,
+  },
   busy: null,
   error: null,
   initializing: false,
@@ -263,6 +268,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
                 connected: false,
                 login: null,
                 has_client_id: false,
+                needs_reauth: false,
               }) as GithubStatus,
           ),
       ]);
@@ -503,6 +509,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
             connected: false,
             login: null,
             has_client_id: false,
+            needs_reauth: false,
           }) as GithubStatus,
       );
     set({ github: gh });

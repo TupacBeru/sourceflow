@@ -144,22 +144,7 @@ export function ConnectGitHub() {
     },
   ];
 
-  if (github.connected) {
-    return (
-      <ContextMenu items={connectedMenu}>
-        <button
-          onClick={() => void logout()}
-          className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-          title={`Signed in as @${github.login}\nClick to sign out · Right-click for options`}
-        >
-          <Github size={14} />
-          <span>@{github.login}</span>
-          <LogOut size={12} className="text-zinc-500" />
-        </button>
-      </ContextMenu>
-    );
-  }
-
+  // Device flow in progress (first connect or re-auth) - show the code.
   if (device) {
     return (
       <div className="flex items-center gap-3 rounded border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs">
@@ -175,6 +160,41 @@ export function ConnectGitHub() {
           {device.user_code}
         </code>
       </div>
+    );
+  }
+
+  // Signed in, but the token predates a scope we now need (e.g. `workflow`
+  // for pushing .github/workflows files). One click re-runs the device flow
+  // and replaces the token; everything else keeps working meanwhile.
+  if (github.connected && github.needs_reauth) {
+    return (
+      <ContextMenu items={connectedMenu}>
+        <button
+          onClick={() => void connect()}
+          disabled={busy}
+          className="flex items-center gap-2 rounded border border-amber-700/60 bg-amber-900/30 px-2 py-1 text-xs text-amber-200 hover:bg-amber-900/50 disabled:opacity-60"
+          title={`Signed in as @${github.login}, but SourceFlow needs updated GitHub permissions (the "workflow" scope) to push changes to .github/workflows files.\nClick to re-authorize once · Right-click for options`}
+        >
+          <Github size={14} />
+          {busy ? "Waiting for GitHub..." : "Update GitHub permissions"}
+        </button>
+      </ContextMenu>
+    );
+  }
+
+  if (github.connected) {
+    return (
+      <ContextMenu items={connectedMenu}>
+        <button
+          onClick={() => void logout()}
+          className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+          title={`Signed in as @${github.login}\nClick to sign out · Right-click for options`}
+        >
+          <Github size={14} />
+          <span>@{github.login}</span>
+          <LogOut size={12} className="text-zinc-500" />
+        </button>
+      </ContextMenu>
     );
   }
 

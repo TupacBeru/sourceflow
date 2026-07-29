@@ -124,6 +124,8 @@ export interface GithubStatus {
   connected: boolean;
   login: string | null;
   has_client_id: boolean;
+  /** Token works but lacks newly required scopes; prompt a one-time re-auth. */
+  needs_reauth: boolean;
 }
 
 export interface PersistedTab {
