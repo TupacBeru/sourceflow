@@ -17,7 +17,7 @@ import {
 } from "@/components/ContextMenu/ContextMenu";
 import { localBranchName } from "@/lib/branchName";
 import { cn } from "@/lib/cn";
-import type { BranchInfo } from "@/lib/types";
+import type { BranchInfo, StashInfo } from "@/lib/types";
 import { useGitActions, type GitActions } from "@/lib/useGitActions";
 import { useActiveTab } from "@/store/repoStore";
 
@@ -222,16 +222,7 @@ export function Sidebar({ style }: { style?: CSSProperties }) {
         }
       >
         {active.stashes.map((s) => (
-          <div
-            key={s.sha}
-            className="px-6 py-1 text-xs text-zinc-300"
-            title={s.message}
-          >
-            <span className="font-mono text-zinc-500">
-              stash@{`{${s.index}}`}
-            </span>{" "}
-            <span className="truncate">{s.message}</span>
-          </div>
+          <StashRow key={s.sha} stash={s} actions={actions} />
         ))}
         {active.stashes.length === 0 && <Empty text="No stashes" />}
       </Section>
@@ -577,6 +568,50 @@ function branchMenuItems(
   void remoteName;
 
   return items;
+}
+
+function StashRow({
+  stash,
+  actions,
+}: {
+  stash: StashInfo;
+  actions: GitActions;
+}) {
+  return (
+    <ContextMenu items={() => stashMenuItems(stash, actions)}>
+      <button
+        type="button"
+        onDoubleClick={() => void actions.applyStash(stash.index)}
+        className="flex w-full items-center gap-1.5 px-6 py-1 text-left text-xs text-zinc-300 hover:bg-zinc-800/50"
+        title={`${stash.message}\nDouble-click to apply · Right-click for actions`}
+      >
+        <span className="shrink-0 font-mono text-zinc-500">
+          stash@{`{${stash.index}}`}
+        </span>
+        <span className="min-w-0 truncate">{stash.message}</span>
+      </button>
+    </ContextMenu>
+  );
+}
+
+function stashMenuItems(stash: StashInfo, actions: GitActions): ContextMenuItem[] {
+  const spec = `stash@{${stash.index}}`;
+  return [
+    {
+      label: `Apply ${spec}`,
+      onClick: () => void actions.applyStash(stash.index),
+    },
+    {
+      label: `Pop ${spec}…`,
+      onClick: () => void actions.popStash(stash.index, stash.message),
+    },
+    { type: "separator" },
+    {
+      label: `Drop ${spec}…`,
+      danger: true,
+      onClick: () => void actions.dropStash(stash.index, stash.message),
+    },
+  ];
 }
 
 function Empty({ text }: { text: string }) {

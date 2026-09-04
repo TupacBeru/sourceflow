@@ -32,6 +32,42 @@ pub async fn stash_push(
 }
 
 #[tauri::command]
+pub async fn stash_apply(
+    tab_id: String,
+    state: State<'_, AppState>,
+    index: usize,
+) -> AppResult<()> {
+    let path = state.require_tab_path(&tab_id)?;
+    tokio::task::spawn_blocking(move || git::refs::stash_apply(&path, index))
+        .await
+        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn stash_pop(
+    tab_id: String,
+    state: State<'_, AppState>,
+    index: usize,
+) -> AppResult<()> {
+    let path = state.require_tab_path(&tab_id)?;
+    tokio::task::spawn_blocking(move || git::refs::stash_pop(&path, index))
+        .await
+        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn stash_drop(
+    tab_id: String,
+    state: State<'_, AppState>,
+    index: usize,
+) -> AppResult<()> {
+    let path = state.require_tab_path(&tab_id)?;
+    tokio::task::spawn_blocking(move || git::refs::stash_drop(&path, index))
+        .await
+        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
+}
+
+#[tauri::command]
 pub fn checkout_branch(
     tab_id: String,
     state: State<AppState>,

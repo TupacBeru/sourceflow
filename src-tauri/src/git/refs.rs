@@ -4,6 +4,7 @@ use git2::{BranchType, Repository, StashFlags};
 
 use crate::error::AppResult;
 
+use super::conflict::run_git;
 use super::repo::open;
 use super::types::{BranchInfo, BranchKind, StashInfo};
 
@@ -127,6 +128,31 @@ pub fn stash_push(path: &Path, message: Option<&str>) -> AppResult<()> {
 
     repo.stash_save(&sig, &msg, Some(StashFlags::INCLUDE_UNTRACKED))?;
     Ok(())
+}
+
+fn stash_spec(index: usize) -> String {
+    format!("stash@{{{index}}}")
+}
+
+/// Apply a stash without dropping it (`git stash apply stash@{n}`).
+///
+/// Uses the git CLI rather than libgit2 so untracked-file stashes
+/// (`stash push -u`) restore the same way `git stash apply` does.
+pub fn stash_apply(path: &Path, index: usize) -> AppResult<()> {
+    let spec = stash_spec(index);
+    run_git(path, &["stash", "apply", &spec])
+}
+
+/// Apply a stash and drop it (`git stash pop stash@{n}`).
+pub fn stash_pop(path: &Path, index: usize) -> AppResult<()> {
+    let spec = stash_spec(index);
+    run_git(path, &["stash", "pop", &spec])
+}
+
+/// Drop a stash without applying it (`git stash drop stash@{n}`).
+pub fn stash_drop(path: &Path, index: usize) -> AppResult<()> {
+    let spec = stash_spec(index);
+    run_git(path, &["stash", "drop", &spec])
 }
 
 /// Checkout a local branch by short name.

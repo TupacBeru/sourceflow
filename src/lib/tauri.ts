@@ -45,6 +45,12 @@ export const api = {
     tauriInvoke<StashInfo[]>("list_stashes", { tabId }),
   stashPush: (tabId: string, message?: string | null) =>
     tauriInvoke<null>("stash_push", { tabId, message: message ?? null }),
+  stashApply: (tabId: string, index: number) =>
+    tauriInvoke<null>("stash_apply", { tabId, index }),
+  stashPop: (tabId: string, index: number) =>
+    tauriInvoke<null>("stash_pop", { tabId, index }),
+  stashDrop: (tabId: string, index: number) =>
+    tauriInvoke<null>("stash_drop", { tabId, index }),
   checkoutBranch: (tabId: string, branch: string) =>
     tauriInvoke<null>("checkout_branch", { tabId, branch }),
 

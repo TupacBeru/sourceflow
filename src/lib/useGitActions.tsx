@@ -19,6 +19,7 @@ import { useRepo } from "@/store/repoStore";
 export function useGitActions(tabId: string) {
   const withBusy = useRepo((s) => s.withBusy);
   const reloadAll = useRepo((s) => s.reloadAll);
+  const setView = useRepo((s) => s.setView);
 
   // --- Branches ----------------------------------------------------------
 
@@ -316,6 +317,63 @@ export function useGitActions(tabId: string) {
     [tabId, withBusy, reloadAll],
   );
 
+  // --- Stash -------------------------------------------------------------
+
+  const applyStash = useCallback(
+    async (index: number) => {
+      await withBusy(`Applying stash@{${index}}...`, () =>
+        api.stashApply(tabId, index),
+      );
+      await reloadAll(tabId);
+      setView(tabId, "working");
+    },
+    [tabId, withBusy, reloadAll, setView],
+  );
+
+  const popStash = useCallback(
+    async (index: number, message: string) => {
+      const ok = await confirm({
+        title: `Pop stash@{${index}}?`,
+        body: (
+          <span>
+            Applies <span className="font-mono">{message}</span> onto the
+            working copy, then removes it from the stash list.
+          </span>
+        ),
+        confirmLabel: "Pop",
+      });
+      if (!ok) return;
+      await withBusy(`Popping stash@{${index}}...`, () =>
+        api.stashPop(tabId, index),
+      );
+      await reloadAll(tabId);
+      setView(tabId, "working");
+    },
+    [tabId, withBusy, reloadAll, setView],
+  );
+
+  const dropStash = useCallback(
+    async (index: number, message: string) => {
+      const ok = await confirm({
+        title: `Drop stash@{${index}}?`,
+        body: (
+          <span>
+            Permanently deletes <span className="font-mono">{message}</span>.
+            This cannot be undone.
+          </span>
+        ),
+        confirmLabel: "Drop",
+        danger: true,
+      });
+      if (!ok) return;
+      await withBusy(`Dropping stash@{${index}}...`, () =>
+        api.stashDrop(tabId, index),
+      );
+      await reloadAll(tabId);
+    },
+    [tabId, withBusy, reloadAll],
+  );
+
   // --- Clipboard helper -------------------------------------------------
 
   const copy = useCallback(async (text: string) => {
@@ -340,6 +398,9 @@ export function useGitActions(tabId: string) {
     checkoutSha,
     createTag,
     pushBranch,
+    applyStash,
+    popStash,
+    dropStash,
     copy,
   };
 }
