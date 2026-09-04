@@ -152,6 +152,7 @@ pub fn push_current(path: &Path) -> AppResult<()> {
         .upstream()
         .ok()
         .and_then(|u| u.name().ok().flatten().map(String::from));
+    let has_upstream = upstream_name.is_some();
     let remote_name = upstream_name
         .as_deref()
         .and_then(|n| n.split('/').next())
@@ -164,7 +165,14 @@ pub fn push_current(path: &Path) -> AppResult<()> {
         .workdir()
         .ok_or_else(|| AppError::InvalidArg("bare repos not supported".into()))?;
 
-    run_git_network(root, &["push", &remote_name, &branch_name])
+    // First push of a local-only branch: publish and set tracking
+    // (`git push -u origin <branch>`). The toolbar used to disable Push
+    // entirely in this case.
+    if has_upstream {
+        run_git_network(root, &["push", &remote_name, &branch_name])
+    } else {
+        run_git_network(root, &["push", "-u", &remote_name, &branch_name])
+    }
 }
 
 /// Compute ahead/behind for HEAD vs its upstream (no fetching - reflects the

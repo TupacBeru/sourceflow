@@ -36,9 +36,18 @@ export function Toolbar() {
   const { ahead, behind, upstream } = active.aheadBehind;
   const disabled = busy !== null;
   const upToDate = upstream && ahead === 0 && behind === 0;
+  const headBranch = active.repo?.head_branch ?? null;
+  const detached = Boolean(active.repo?.is_detached);
+  const canPush = !disabled && !detached && Boolean(headBranch);
+  const unpublished = !upstream && !detached && Boolean(headBranch);
 
   const onPush = async () => {
-    await withBusy("Pushing...", () => api.pushCurrent(tabId));
+    await withBusy(
+      unpublished && headBranch
+        ? `Publishing ${headBranch}...`
+        : "Pushing...",
+      () => api.pushCurrent(tabId),
+    );
     await reloadAll(tabId);
   };
   const onFetch = async () => {
@@ -87,10 +96,16 @@ export function Toolbar() {
         label="Push"
         badge={ahead > 0 ? ahead : undefined}
         badgeColor="emerald"
-        highlight={ahead > 0}
+        highlight={ahead > 0 || unpublished}
         onClick={() => void onPush()}
-        disabled={disabled || !upstream}
-        title={upstream ? `Push to ${upstream}` : "No upstream configured"}
+        disabled={!canPush}
+        title={
+          detached || !headBranch
+            ? "Cannot push a detached HEAD"
+            : upstream
+              ? `Push to ${upstream}`
+              : `Publish ${headBranch} to origin (sets upstream)`
+        }
       />
       <ToolbarButton
         icon={<RefreshCw size={16} />}
@@ -115,7 +130,12 @@ export function Toolbar() {
             <span className="text-zinc-500">{upstream}</span>
           </>
         ) : (
-          <span className="text-zinc-500">No upstream</span>
+          <span
+            className="text-zinc-500"
+            title="This branch has no remote tracking branch. Push publishes it to origin."
+          >
+            Not published
+          </span>
         )}
         {!busy && (
           <span
