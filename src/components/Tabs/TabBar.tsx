@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, FolderOpen, X } from "lucide-react";
 
 import {
@@ -42,8 +42,8 @@ export function TabBar() {
   };
 
   return (
-    <div className="flex h-11 items-stretch border-b border-zinc-800 bg-zinc-900/80">
-      <div className="flex flex-1 items-stretch overflow-x-auto scrollbar-thin">
+    <div className="flex items-stretch border-b border-zinc-800 bg-zinc-900/80">
+      <TabScroller>
         {tabs.map((tab) => (
           <TabItem
             key={tab.id}
@@ -91,7 +91,7 @@ export function TabBar() {
             }}
           />
         ))}
-      </div>
+      </TabScroller>
       <div className="relative flex items-stretch border-l border-zinc-800">
         <NewRepoMenu showRecentChevron={recentlyClosed.length > 0}>
           {recentlyClosed.length > 0 && (
@@ -114,6 +114,127 @@ export function TabBar() {
             }}
             onClose={() => setShowRecent(false)}
           />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/// Horizontal tab overflow. The native scrollbar is hidden because WebKitGTK
+/// draws it thick enough to swallow a short tab row. A 4px thumb sits under
+/// the tabs instead, so the labels keep their full height.
+function TabScroller({ children }: { children: React.ReactNode }) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startScroll: number;
+    travel: number;
+  } | null>(null);
+  const [metrics, setMetrics] = useState({
+    scrollLeft: 0,
+    clientWidth: 0,
+    scrollWidth: 0,
+  });
+
+  const update = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setMetrics((prev) => {
+      const next = {
+        scrollLeft: Math.round(el.scrollLeft),
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+      };
+      if (
+        prev.scrollLeft === next.scrollLeft &&
+        prev.clientWidth === next.clientWidth &&
+        prev.scrollWidth === next.scrollWidth
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  // Measure once, after the tab row is in the DOM. A layout effect with no
+  // dependency list setStates on every pass. On WebKitGTK those measurements
+  // never settle, React aborts with "maximum update depth exceeded", and the
+  // window opens blank. Later label and window-size changes come through the
+  // ResizeObserver below.
+  useLayoutEffect(() => {
+    update();
+  }, [update]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    ro.observe(content);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [update]);
+
+  const maxScroll = Math.max(0, metrics.scrollWidth - metrics.clientWidth);
+  const overflow = maxScroll > 1;
+  const thumbWidth = overflow
+    ? Math.max(28, (metrics.clientWidth / metrics.scrollWidth) * metrics.clientWidth)
+    : 0;
+  const thumbTravel = Math.max(0, metrics.clientWidth - thumbWidth);
+  const thumbX = maxScroll > 0 ? (metrics.scrollLeft / maxScroll) * thumbTravel : 0;
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        ref={scrollerRef}
+        className="h-12 overflow-x-auto overflow-y-hidden scrollbar-none"
+      >
+        {/* Not a flex item of the scroller: a flex child shrinks to the
+            viewport, so scrollWidth stays equal to clientWidth until resize. */}
+        <div ref={contentRef} className="flex h-full w-max min-w-full items-stretch">
+          {children}
+        </div>
+      </div>
+      <div className="relative h-1 shrink-0">
+        {overflow && (
+          <div
+            className="group absolute -top-1 bottom-0 cursor-ew-resize"
+            style={{ width: thumbWidth, transform: `translateX(${thumbX}px)` }}
+            onPointerDown={(e) => {
+              const el = scrollerRef.current;
+              if (!el) return;
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const width = Math.max(28, (el.clientWidth / el.scrollWidth) * el.clientWidth);
+              dragRef.current = {
+                startX: e.clientX,
+                startScroll: el.scrollLeft,
+                travel: Math.max(1, el.clientWidth - width),
+              };
+            }}
+            onPointerMove={(e) => {
+              const drag = dragRef.current;
+              const el = scrollerRef.current;
+              if (!drag || !el || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+              const max = el.scrollWidth - el.clientWidth;
+              const dx = e.clientX - drag.startX;
+              el.scrollLeft = drag.startScroll + (dx / drag.travel) * max;
+            }}
+            onPointerUp={() => {
+              dragRef.current = null;
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null;
+            }}
+          >
+            <div className="absolute inset-x-0 bottom-0 h-1 rounded-full bg-zinc-500 group-hover:bg-zinc-300" />
+          </div>
         )}
       </div>
     </div>
@@ -284,7 +405,7 @@ function RecentlyClosedMenu({
         onClick={onClose}
         aria-hidden
       />
-      <div className="absolute right-0 top-9 z-20 w-80 rounded-md border border-zinc-700 bg-zinc-900 py-1 text-xs shadow-xl">
+      <div className="absolute right-0 top-full z-20 w-80 rounded-md border border-zinc-700 bg-zinc-900 py-1 text-xs shadow-xl">
         <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
           Recently closed
         </div>
