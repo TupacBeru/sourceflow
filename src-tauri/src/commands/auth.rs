@@ -31,9 +31,7 @@ pub struct OauthResult {
 }
 
 #[tauri::command]
-pub async fn start_github_oauth(
-    window: tauri::Window,
-) -> AppResult<OauthResult> {
+pub async fn start_github_oauth(window: tauri::Window) -> AppResult<OauthResult> {
     let client_id = oauth::resolve_client_id()?;
     let device = oauth::request_device_code(&client_id).await?;
 
@@ -47,8 +45,7 @@ pub async fn start_github_oauth(
         }),
     );
 
-    let token =
-        oauth::poll_for_token(&client_id, &device.device_code, device.interval).await?;
+    let token = oauth::poll_for_token(&client_id, &device.device_code, device.interval).await?;
     store::save_github_token(&token)?;
     let login = oauth::fetch_user(&token).await?.login;
     Ok(OauthResult { login })

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { BackgroundFetcher } from "@/components/BackgroundFetcher";
+import { LiveRepoSync } from "@/components/LiveRepoSync";
 import { ContextMenuHost } from "@/components/ContextMenu/ContextMenu";
 import { DialogHost } from "@/components/Dialog/DialogHost";
 import { EmptyState } from "@/components/EmptyState";
@@ -42,6 +43,7 @@ export default function App() {
   return (
     <div className="flex h-full w-full flex-col bg-zinc-950">
       <BackgroundFetcher />
+      <LiveRepoSync />
       <ContextMenuHost />
       <DialogHost />
       <TitleBar />

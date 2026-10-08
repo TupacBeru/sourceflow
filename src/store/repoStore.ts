@@ -84,6 +84,12 @@ interface RepoStore {
 
   /// Per-tab data refresh.
   reloadAll: (tabId: string) => Promise<void>;
+  /// Reload from disk after something outside the app changed the repo
+  /// (commit, checkout, push, …). Keeps the "last fetched" clock alone.
+  reloadFromDisk: (tabId: string) => Promise<void>;
+  /// Cheap poll: working tree plus ref identity. Walks history only when
+  /// HEAD, a branch tip, or ahead/behind actually moved.
+  refreshLive: (tabId: string) => Promise<void>;
   reloadStatus: (tabId: string) => Promise<void>;
   /// Lighter refresh that only touches branches + ahead/behind - used after a
   /// silent background fetch so we don't churn the commit list or working
@@ -155,6 +161,118 @@ function formatErr(e: unknown): string {
     : String(e);
 }
 
+/// Bumped at the start of every snapshot write so a slow disk read cannot
+/// overwrite a newer one that started later.
+const refreshGeneration = new Map<string, number>();
+/// Separate from `refreshGeneration` so a disk reload cannot cancel a user
+/// refresh that started first (and drop the "last fetched" timestamp), while
+/// still dropping an older disk read when a newer one is in flight.
+const diskGeneration = new Map<string, number>();
+const liveInflight = new Set<string>();
+
+function bumpRefresh(tabId: string): number {
+  const next = (refreshGeneration.get(tabId) ?? 0) + 1;
+  refreshGeneration.set(tabId, next);
+  return next;
+}
+
+function refreshGenerationOf(tabId: string): number {
+  return refreshGeneration.get(tabId) ?? 0;
+}
+
+function bumpDisk(tabId: string): number {
+  const next = (diskGeneration.get(tabId) ?? 0) + 1;
+  diskGeneration.set(tabId, next);
+  return next;
+}
+
+interface DiskSnapshot {
+  summary: RepoSummary | null;
+  branches: BranchInfo[] | null;
+  stashes: StashInfo[] | null;
+  commits: CommitInfo[] | null;
+  status: WorkingStatus | null;
+  aheadBehind: AheadBehind | null;
+  operationState: RepoOperationState | null;
+}
+
+async function loadSnapshot(tabId: string, allRefs: boolean): Promise<DiskSnapshot> {
+  const [summary, branches, stashes, commits, status, aheadBehind, operationState] =
+    await Promise.all([
+      api.repositorySummary(tabId).catch(() => null),
+      api.listBranches(tabId).catch(() => null),
+      api.listStashes(tabId).catch(() => null),
+      api.commitHistory(tabId, 2000, allRefs).catch(() => null),
+      api.workingStatus(tabId).catch(() => null),
+      api.aheadBehind(tabId).catch(() => null),
+      api.repositoryOperationState(tabId).catch(() => null),
+    ]);
+  return { summary, branches, stashes, commits, status, aheadBehind, operationState };
+}
+
+function dataKey(parts: {
+  repo: RepoSummary | null;
+  branches: BranchInfo[];
+  stashes: StashInfo[];
+  commits: CommitInfo[];
+  status: WorkingStatus;
+  aheadBehind: AheadBehind;
+  operationState: RepoOperationState;
+}): string {
+  return JSON.stringify(parts);
+}
+
+function keyOf(tab: TabState): string {
+  return dataKey({
+    repo: tab.repo,
+    branches: tab.branches,
+    stashes: tab.stashes,
+    commits: tab.commits,
+    status: tab.status,
+    aheadBehind: tab.aheadBehind,
+    operationState: tab.operationState,
+  });
+}
+
+/// `lastFetchedAt === undefined` keeps the current value.
+function applySnapshot(
+  tabId: string,
+  snap: DiskSnapshot,
+  lastFetchedAt: number | undefined,
+) {
+  useRepo.setState((s) => {
+    const current = s.tabs.find((t) => t.id === tabId);
+    if (!current) return s;
+    const repo = snap.summary ?? current.repo;
+    const branches = snap.branches ?? current.branches;
+    const stashes = snap.stashes ?? current.stashes;
+    const commits = snap.commits ?? current.commits;
+    const status = snap.status ?? current.status;
+    const aheadBehind = snap.aheadBehind ?? current.aheadBehind;
+    const operationState = snap.operationState ?? current.operationState;
+    const fetched = lastFetchedAt === undefined ? current.lastFetchedAt : lastFetchedAt;
+    const sameData =
+      dataKey({
+        repo,
+        branches,
+        stashes,
+        commits,
+        status,
+        aheadBehind,
+        operationState,
+      }) === keyOf(current);
+    if (sameData && fetched === current.lastFetchedAt) return s;
+    return {
+      tabs: patchTab(s.tabs, tabId, {
+        ...(sameData
+          ? {}
+          : { repo, branches, stashes, commits, status, aheadBehind, operationState }),
+        lastFetchedAt: fetched,
+      }),
+    };
+  });
+}
+
 async function persistTabs(state: RepoStore) {
   await api
     .saveTabs(state.tabs.map((t) => ({ id: t.id, path: t.path })))
@@ -198,11 +316,17 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   setHistoryScope: async (tabId, scope) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
+    const gen = bumpRefresh(tabId);
     set((s) => ({ tabs: patchTab(s.tabs, tabId, { historyScope: scope }) }));
     const commits = await api
       .commitHistory(tabId, 2000, scope === "all")
-      .catch(() => [] as CommitInfo[]);
-    set((s) => ({ tabs: patchTab(s.tabs, tabId, { commits }) }));
+      .catch(() => null as CommitInfo[] | null);
+    if (refreshGenerationOf(tabId) !== gen || !commits) return;
+    set((s) => {
+      const current = s.tabs.find((t) => t.id === tabId);
+      if (!current || current.historyScope !== scope) return s;
+      return { tabs: patchTab(s.tabs, tabId, { commits }) };
+    });
   },
 
   setSelectedCommit: (tabId, sha) =>
@@ -351,6 +475,7 @@ export const useRepo = create<RepoStore>((set, get) => ({
     if (existing) {
       set({ activeTabId: existing.id });
       await api.setActiveTab(existing.id).catch(() => undefined);
+      void get().reloadFromDisk(existing.id);
       return;
     }
 
@@ -385,6 +510,9 @@ export const useRepo = create<RepoStore>((set, get) => ({
   closeTab: async (tabId) => {
     const tab = get().tabs.find((t) => t.id === tabId);
     if (!tab) return;
+    refreshGeneration.delete(tabId);
+    diskGeneration.delete(tabId);
+    liveInflight.delete(tabId);
     await api.closeRepository(tabId).catch(() => undefined);
     if (tab.path) {
       await api.pushRecentlyClosed(tab.path).catch(() => undefined);
@@ -408,8 +536,10 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   setActiveTab: (tabId) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
+    const changed = get().activeTabId !== tabId;
     set({ activeTabId: tabId });
     void api.setActiveTab(tabId).catch(() => undefined);
+    if (changed) void get().reloadFromDisk(tabId);
   },
 
   reorderTabs: (orderedIds) => {
@@ -422,38 +552,104 @@ export const useRepo = create<RepoStore>((set, get) => ({
   },
 
   reloadAll: async (tabId) => {
-    const scope = get().tabs.find((t) => t.id === tabId)?.historyScope ?? "all";
-    if (!get().tabs.some((t) => t.id === tabId)) return;
-    const [branches, stashes, commits, status, ab, op] = await Promise.all([
-      api.listBranches(tabId).catch(() => [] as BranchInfo[]),
-      api.listStashes(tabId).catch(() => [] as StashInfo[]),
-      api.commitHistory(tabId, 2000, scope === "all").catch(() => [] as CommitInfo[]),
-      api.workingStatus(tabId).catch(() => EMPTY_STATUS),
-      api.aheadBehind(tabId).catch(() => EMPTY_AB),
-      api.repositoryOperationState(tabId).catch(() => EMPTY_OP),
-    ]);
-    set((s) => ({
-      tabs: patchTab(s.tabs, tabId, {
-        branches,
-        stashes,
-        commits,
-        status,
-        aheadBehind: ab,
-        operationState: op,
-        // Manual reloadAll usually follows a user-initiated fetch/pull/push,
-        // so mark the freshness clock too.
-        lastFetchedAt: Date.now(),
-      }),
-    }));
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const gen = bumpRefresh(tabId);
+    const scope = tab.historyScope;
+    const snap = await loadSnapshot(tabId, scope === "all");
+    if (refreshGenerationOf(tabId) !== gen) return;
+    if (get().tabs.find((t) => t.id === tabId)?.historyScope !== scope) return;
+    // Manual reloadAll usually follows a user-initiated fetch/pull/push,
+    // so mark the freshness clock too. Also refreshes HEAD, which is what
+    // the tab label and toolbar read.
+    applySnapshot(tabId, snap, Date.now());
+  },
+
+  reloadFromDisk: async (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const diskGen = bumpDisk(tabId);
+    const userGen = refreshGenerationOf(tabId);
+    const scope = tab.historyScope;
+    const snap = await loadSnapshot(tabId, scope === "all");
+    if (diskGeneration.get(tabId) !== diskGen) return;
+    if (refreshGenerationOf(tabId) !== userGen) return;
+    if (get().tabs.find((t) => t.id === tabId)?.historyScope !== scope) return;
+    applySnapshot(tabId, snap, undefined);
+  },
+
+  refreshLive: async (tabId) => {
+    if (liveInflight.has(tabId) || get().busy) return;
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (!tab || tab.loading || tab.backgroundFetching) return;
+    liveInflight.add(tabId);
+    const gen = refreshGenerationOf(tabId);
+    try {
+      const [summary, branches, stashes, status, aheadBehind, operationState] =
+        await Promise.all([
+          api.repositorySummary(tabId).catch(() => null),
+          api.listBranches(tabId).catch(() => null),
+          api.listStashes(tabId).catch(() => null),
+          api.workingStatus(tabId).catch(() => null),
+          api.aheadBehind(tabId).catch(() => null),
+          api.repositoryOperationState(tabId).catch(() => null),
+        ]);
+      if (refreshGenerationOf(tabId) !== gen) return;
+      const current = get().tabs.find((t) => t.id === tabId);
+      if (!current) return;
+
+      const headMoved =
+        summary !== null &&
+        (summary.head_sha !== current.repo?.head_sha ||
+          summary.head_branch !== current.repo?.head_branch ||
+          summary.is_detached !== current.repo?.is_detached);
+      const refsMoved =
+        (branches !== null && JSON.stringify(branches) !== JSON.stringify(current.branches)) ||
+        (stashes !== null && JSON.stringify(stashes) !== JSON.stringify(current.stashes)) ||
+        (aheadBehind !== null &&
+          JSON.stringify(aheadBehind) !== JSON.stringify(current.aheadBehind));
+      if (headMoved || refsMoved) {
+        await get().reloadFromDisk(tabId);
+        return;
+      }
+      if (refreshGenerationOf(tabId) !== gen) return;
+      if (!status && !operationState) return;
+      const latest = get().tabs.find((t) => t.id === tabId);
+      if (!latest) return;
+      const nextStatus = status ?? latest.status;
+      const nextOp = operationState ?? latest.operationState;
+      const statusChanged =
+        JSON.stringify(nextStatus) !== JSON.stringify(latest.status) ||
+        JSON.stringify(nextOp) !== JSON.stringify(latest.operationState);
+      if (!statusChanged) return;
+      // Invalidate an in-flight disk read so it cannot put the previous
+      // file list back on top of this one. Only when something actually
+      // changed — an unchanged poll must not cancel a history reload.
+      bumpRefresh(tabId);
+      useRepo.setState((s) => {
+        const cur = s.tabs.find((t) => t.id === tabId);
+        if (!cur) return s;
+        return {
+          tabs: patchTab(s.tabs, tabId, {
+            status: nextStatus,
+            operationState: nextOp,
+          }),
+        };
+      });
+    } finally {
+      liveInflight.delete(tabId);
+    }
   },
 
   reloadStatus: async (tabId) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
+    const gen = bumpRefresh(tabId);
     const [status, ab, op] = await Promise.all([
       api.workingStatus(tabId).catch(() => EMPTY_STATUS),
       api.aheadBehind(tabId).catch(() => EMPTY_AB),
       api.repositoryOperationState(tabId).catch(() => EMPTY_OP),
     ]);
+    if (refreshGenerationOf(tabId) !== gen) return;
     set((s) => ({
       tabs: patchTab(s.tabs, tabId, { status, aheadBehind: ab, operationState: op }),
     }));
@@ -461,10 +657,12 @@ export const useRepo = create<RepoStore>((set, get) => ({
 
   reloadBranchStatus: async (tabId) => {
     if (!get().tabs.some((t) => t.id === tabId)) return;
+    const gen = bumpRefresh(tabId);
     const [branches, ab] = await Promise.all([
       api.listBranches(tabId).catch(() => null),
       api.aheadBehind(tabId).catch(() => null),
     ]);
+    if (refreshGenerationOf(tabId) !== gen) return;
     set((s) => ({
       tabs: patchTab(s.tabs, tabId, {
         ...(branches ? { branches } : {}),

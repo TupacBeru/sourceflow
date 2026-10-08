@@ -31,8 +31,7 @@ pub fn normalize_clone_url(url: &str) -> AppResult<String> {
 
     if trimmed.starts_with("git@") {
         return Err(AppError::InvalidArg(
-            "only github.com SSH URLs are supported — use https://github.com/owner/repo.git"
-                .into(),
+            "only github.com SSH URLs are supported — use https://github.com/owner/repo.git".into(),
         ));
     }
 

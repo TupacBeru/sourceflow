@@ -1,39 +1,69 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/tauri";
 import type { DiffPayload } from "@/lib/types";
-import { useActiveTab } from "@/store/repoStore";
+import { useActiveTab, useRepo } from "@/store/repoStore";
+
+function sameDiff(a: DiffPayload | null, b: DiffPayload): boolean {
+  return (
+    !!a &&
+    a.path === b.path &&
+    a.old_path === b.old_path &&
+    a.is_binary === b.is_binary &&
+    a.patch === b.patch
+  );
+}
 
 export function DiffPanel() {
   const active = useActiveTab();
   const sel = active?.selectFile ?? null;
   const tabId = active?.id ?? null;
+  const headSha = active?.repo?.head_sha ?? null;
   const [diff, setDiff] = useState<DiffPayload | null>(null);
   const [loading, setLoading] = useState(false);
+  const selectionKey = `${tabId ?? ""}:${sel?.path ?? ""}:${String(sel?.staged ?? "")}`;
+  const prevKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!sel || !tabId) {
       setDiff(null);
+      prevKey.current = null;
       return;
     }
+    const announce = prevKey.current !== selectionKey;
+    prevKey.current = selectionKey;
     let cancelled = false;
-    setLoading(true);
-    api
-      .fileDiff(tabId, sel.path, sel.staged)
-      .then((d) => {
-        if (!cancelled) setDiff(d);
-      })
-      .catch(() => {
-        if (!cancelled) setDiff(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+
+    const load = (opts: { announce: boolean; clearOnError: boolean }) => {
+      if (opts.announce) setLoading(true);
+      api
+        .fileDiff(tabId, sel.path, sel.staged)
+        .then((d) => {
+          if (cancelled) return;
+          setDiff((prev) => (sameDiff(prev, d) ? prev : d));
+        })
+        .catch(() => {
+          if (!cancelled && opts.clearOnError) setDiff(null);
+        })
+        .finally(() => {
+          if (!cancelled && opts.announce) setLoading(false);
+        });
+    };
+
+    load({ announce, clearOnError: true });
+    // File contents can change without the path leaving the list (an agent
+    // editing a file that is already modified). Refresh quietly.
+    const timer = window.setInterval(() => {
+      if (document.hidden || useRepo.getState().busy) return;
+      load({ announce: false, clearOnError: false });
+    }, 2_000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [tabId, sel?.path, sel?.staged]);
+  }, [tabId, sel?.path, sel?.staged, headSha, selectionKey]);
 
   if (!sel) {
     return (

@@ -60,16 +60,10 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
         let (upstream, ahead, behind) = if kind == BranchKind::Local {
             match b.upstream() {
                 Ok(u) => {
-                    let upstream_name = u
-                        .name()
-                        .ok()
-                        .flatten()
-                        .map(String::from);
+                    let upstream_name = u.name().ok().flatten().map(String::from);
                     let upstream_target = u.get().target();
                     let (ahead, behind) = match (local_target, upstream_target) {
-                        (Some(l), Some(r)) => repo
-                            .graph_ahead_behind(l, r)
-                            .unwrap_or((0, 0)),
+                        (Some(l), Some(r)) => repo.graph_ahead_behind(l, r).unwrap_or((0, 0)),
                         _ => (0, 0),
                     };
                     (upstream_name, ahead, behind)

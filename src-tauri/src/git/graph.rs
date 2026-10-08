@@ -43,9 +43,7 @@ pub fn assign_lanes(commits: &mut [CommitInfo]) {
 
         // 2. Pick this commit's lane (leftmost waiter, or a fresh lane).
         let (my_lane, my_color) = if let Some(&first) = waiting_lanes.first() {
-            let color = active[first]
-                .expect("waiting lane must be alive")
-                .color;
+            let color = active[first].expect("waiting lane must be alive").color;
             (first, color)
         } else {
             let lane = allocate_lane(&mut active);

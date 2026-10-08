@@ -56,8 +56,8 @@ pub fn create_branch(
     let repo = open(path)?;
     let commit = match start_point {
         Some(sha) => {
-            let oid = Oid::from_str(sha)
-                .map_err(|_| AppError::InvalidArg(format!("bad sha: {sha}")))?;
+            let oid =
+                Oid::from_str(sha).map_err(|_| AppError::InvalidArg(format!("bad sha: {sha}")))?;
             repo.find_commit(oid)?
         }
         None => repo.head()?.peel_to_commit()?,
@@ -130,8 +130,8 @@ pub fn create_tag(
     let repo = open(path)?;
     let target = match target_sha {
         Some(sha) => {
-            let oid = Oid::from_str(sha)
-                .map_err(|_| AppError::InvalidArg(format!("bad sha: {sha}")))?;
+            let oid =
+                Oid::from_str(sha).map_err(|_| AppError::InvalidArg(format!("bad sha: {sha}")))?;
             repo.find_object(oid, None)?
         }
         None => repo.head()?.peel(git2::ObjectType::Any)?,
@@ -255,9 +255,7 @@ pub fn rebase_onto(path: &Path, onto: &str) -> AppResult<()> {
     let repo = open(path)?;
     let head = repo.head()?;
     if !head.is_branch() {
-        return Err(AppError::InvalidArg(
-            "cannot rebase a detached HEAD".into(),
-        ));
+        return Err(AppError::InvalidArg("cannot rebase a detached HEAD".into()));
     }
 
     let head_commit = head.peel_to_commit()?;
@@ -356,14 +354,7 @@ pub fn revert_commit(path: &Path, sha: &str) -> AppResult<()> {
     let short = sha.chars().take(7).collect::<String>();
     let summary = commit.summary().unwrap_or("");
     let msg = format!("Revert \"{summary}\"\n\nThis reverts commit {short}.\n");
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        &msg,
-        &tree,
-        &[&head_commit],
-    )?;
+    repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[&head_commit])?;
     repo.cleanup_state()?;
     Ok(())
 }

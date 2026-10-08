@@ -125,11 +125,7 @@ pub fn abort_rebase(tab_id: String, state: State<AppState>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn cherry_pick(
-    tab_id: String,
-    state: State<'_, AppState>,
-    sha: String,
-) -> AppResult<()> {
+pub async fn cherry_pick(tab_id: String, state: State<'_, AppState>, sha: String) -> AppResult<()> {
     let path = state.require_tab_path(&tab_id)?;
     tokio::task::spawn_blocking(move || git::ops::cherry_pick(&path, &sha))
         .await

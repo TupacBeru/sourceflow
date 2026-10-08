@@ -9,10 +9,12 @@ mod config;
 mod error;
 mod git;
 mod state;
+mod watch;
 
 use state::AppState;
 use tauri::{image::Image, Manager};
 use tracing_subscriber::{fmt, EnvFilter};
+use watch::RepoWatcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::new())
+        .manage(RepoWatcher::new())
         .setup(|app| {
             // Set the runtime window icon. tauri.conf.json's bundle.icon is
             // for the packaged distribution; the dev-mode WM hint needs to

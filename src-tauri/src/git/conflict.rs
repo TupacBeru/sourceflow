@@ -11,10 +11,10 @@ use git2::{Repository, RepositoryState};
 use crate::config;
 use crate::error::{AppError, AppResult};
 
+use super::credentials;
 use super::repo::open;
 use super::stage;
 use super::types::{MergeToolSettings, OperationKind, RepoOperationState};
-use super::credentials;
 
 fn repo_root(repo: &Repository, fallback: &Path) -> PathBuf {
     repo.workdir()
@@ -240,7 +240,9 @@ pub fn continue_operation(path: &Path) -> AppResult<()> {
         RepositoryState::Revert | RepositoryState::RevertSequence => {
             run_git(&root, &["revert", "--continue"])
         }
-        _ => Err(AppError::InvalidArg("no operation in progress to continue".into())),
+        _ => Err(AppError::InvalidArg(
+            "no operation in progress to continue".into(),
+        )),
     }
 }
 

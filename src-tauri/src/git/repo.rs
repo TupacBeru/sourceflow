@@ -122,8 +122,7 @@ pub fn commit_history(path: &Path, limit: usize, all_refs: bool) -> AppResult<Ve
 }
 
 fn collect_refs_by_sha(repo: &Repository) -> std::collections::HashMap<String, Vec<String>> {
-    let mut map: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     let Ok(iter) = repo.references() else {
         return map;
     };
@@ -165,8 +164,7 @@ pub fn commit_files(path: &Path, sha: &str) -> AppResult<Vec<FileEntry>> {
 
     let mut opts = DiffOptions::new();
     opts.context_lines(0);
-    let diff =
-        repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
 
     let mut out: Vec<FileEntry> = Vec::new();
     for delta in diff.deltas() {
@@ -214,8 +212,7 @@ pub fn commit_file_diff(path: &Path, sha: &str, file: &str) -> AppResult<DiffPay
 
     let mut opts = DiffOptions::new();
     opts.pathspec(file).context_lines(3);
-    let diff =
-        repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
 
     let mut patch = String::new();
     let mut is_binary = false;

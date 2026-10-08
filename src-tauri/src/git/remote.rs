@@ -204,11 +204,7 @@ pub fn ahead_behind(path: &Path) -> AppResult<AheadBehind> {
         Some(o) => o,
         None => return Ok(AheadBehind::default()),
     };
-    let upstream_name = upstream
-        .name()
-        .ok()
-        .flatten()
-        .map(String::from);
+    let upstream_name = upstream.name().ok().flatten().map(String::from);
 
     let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
     Ok(AheadBehind {

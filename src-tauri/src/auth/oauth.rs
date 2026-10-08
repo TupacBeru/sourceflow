@@ -146,9 +146,7 @@ pub async fn poll_for_token(
                 interval_secs += 5;
                 continue;
             }
-            Some("expired_token") => {
-                return Err(AppError::Oauth("device code expired".into()))
-            }
+            Some("expired_token") => return Err(AppError::Oauth("device code expired".into())),
             Some("access_denied") => {
                 return Err(AppError::Oauth("user cancelled authorization".into()))
             }

@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::error::AppResult;
 use crate::git;
 use crate::git::types::{CommitInfo, DiffPayload, FileEntry, RepoSummary, WorkingStatus};
 use crate::state::AppState;
+use crate::watch::RepoWatcher;
 
 /// Open a repository and register it under a frontend-provided tab id.
 ///
@@ -14,19 +15,29 @@ use crate::state::AppState;
 /// stable identifier in its UI label.
 #[tauri::command]
 pub fn open_repository(
+    app: AppHandle,
     tab_id: String,
     path: String,
     state: State<AppState>,
+    watcher: State<RepoWatcher>,
 ) -> AppResult<RepoSummary> {
     let p = PathBuf::from(&path);
     let canonical = git::repo::canonical_workdir(&p)?;
     let summary = git::repo::summarize(&canonical)?;
-    state.register_tab(tab_id, canonical);
+    state.register_tab(tab_id.clone(), canonical.clone());
+    if let Err(err) = watcher.watch(app, tab_id, &canonical) {
+        tracing::warn!(error = %err, "repository opened without live refresh");
+    }
     Ok(summary)
 }
 
 #[tauri::command]
-pub fn close_repository(tab_id: String, state: State<AppState>) -> AppResult<()> {
+pub fn close_repository(
+    tab_id: String,
+    state: State<AppState>,
+    watcher: State<RepoWatcher>,
+) -> AppResult<()> {
+    watcher.unwatch(&tab_id);
     state.remove_tab(&tab_id);
     Ok(())
 }

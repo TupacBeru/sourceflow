@@ -111,9 +111,7 @@ pub fn load_last_clone_parent() -> AppResult<Option<String>> {
 
 pub fn save_last_clone_parent(path: Option<String>) -> AppResult<()> {
     let mut state = load()?;
-    state.last_clone_parent = path
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    state.last_clone_parent = path.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     save(&state)
 }
 

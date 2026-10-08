@@ -49,10 +49,7 @@ pub async fn open_conflict_file(
 }
 
 #[tauri::command]
-pub async fn continue_operation(
-    tab_id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn continue_operation(tab_id: String, state: State<'_, AppState>) -> AppResult<()> {
     let path = state.require_tab_path(&tab_id)?;
     tokio::task::spawn_blocking(move || git::conflict::continue_operation(&path))
         .await
@@ -60,10 +57,7 @@ pub async fn continue_operation(
 }
 
 #[tauri::command]
-pub async fn abort_operation(
-    tab_id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn abort_operation(tab_id: String, state: State<'_, AppState>) -> AppResult<()> {
     let path = state.require_tab_path(&tab_id)?;
     tokio::task::spawn_blocking(move || git::conflict::abort_operation(&path))
         .await
