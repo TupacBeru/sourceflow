@@ -11,7 +11,6 @@ build/
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
-src-tauri/Cargo.lock
 
 # Editors / OS
 .vscode/*
@@ -36,4 +35,4 @@ yarn-error.log*
 # Test / coverage
 coverage/
 *.lcov
-/package-lock.json
+*.tsbuildinfo

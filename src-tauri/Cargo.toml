@@ -20,12 +20,10 @@ tauri-plugin-dialog = "2.0"
 tauri-plugin-opener = "2.2"
 tauri-plugin-shell = "2.0"
 
-# Git engine.
-# We vendor libgit2 (so we don't depend on Fedora's possibly-stale system version),
-# but link against the system OpenSSL via pkg-config (avoids needing Perl's
-# FindBin / IPC::Cmd modules at build time, which are split out on modern Fedora).
-# Requires `openssl-devel` to be installed system-wide.
-git2 = { version = "0.19", default-features = false, features = ["https", "vendored-libgit2"] }
+# Git engine: libgit2 is vendored on every OS. OpenSSL is system-linked on
+# Linux (needs openssl-devel) so Fedora builds skip vendored-openssl's Perl
+# FindBin / IPC::Cmd requirement. macOS has no system OpenSSL, so we vendor
+# it there only.
 
 # Async runtime + http for OAuth
 tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
@@ -63,7 +61,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+git2 = { version = "0.19", default-features = false, features = ["https", "vendored-libgit2"] }
 keyring = { version = "3", features = ["linux-native-sync-persistent", "sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+git2 = { version = "0.19", default-features = false, features = ["https", "vendored-libgit2", "vendored-openssl"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }

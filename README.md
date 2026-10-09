@@ -1,7 +1,9 @@
 # SourceFlow
 
-A lightweight, native-feeling Git client for Fedora / KDE, focused on GitHub.
+A lightweight, native-feeling Git client focused on GitHub.
 Built with Tauri 2 (Rust) + React + TypeScript.
+
+Works on **Linux** (Fedora, Debian/Ubuntu, and most distros) and **macOS**.
 
 ## Why
 
@@ -11,126 +13,102 @@ aims to be:
 
 - Lightweight (Tauri WebView, not Electron)
 - GitHub-only (simple OAuth, no SSH key juggling)
-- Native KDE feel: stores GitHub tokens in the OS keyring (KWallet on KDE,
-  GNOME Keyring on GNOME) via the Secret Service API, so they survive reboots
+- Tokens stored in the OS keyring (KWallet / GNOME Keyring / macOS Keychain)
 - A real Git workflow tool: stage, commit, branch management, merge, rebase,
   cherry-pick, revert, reset, tag, context menus everywhere
 
-## Status
-
-**Phase 1** - MVP. See `PLAN.md` for the 3-phase roadmap.
-
-Phase 1 deliverables:
-- Open a single repo
-- Browse commit history
-- Branch sidebar (LOCAL / REMOTE / STASHES)
-- Working Copy view: stage, unstage, commit
-- GitHub OAuth + KWallet credential storage
-- Pull / Push / Fetch toolbar
-
-## Install for daily use (Fedora / KDE)
-
-Build a system RPM once, install it, then launch **SourceFlow** from the app menu
-and pin it to the taskbar like any other app (no terminal needed).
+## Clone and run
 
 ```bash
-# One-time: build tools (rpm-build only if packaging fails)
-sudo dnf install \
-    webkit2gtk4.1-devel \
-    openssl-devel \
-    libsecret-devel \
-    libappindicator-gtk3-devel \
-    librsvg2-devel \
-    gcc gcc-c++ \
-    pkgconf-pkg-config
-
-cd ~/Projects/sourceflow
-npm install
-./scripts/install-rpm.sh   # builds release RPM and installs with dnf
+git clone https://github.com/TupacBeru/sourceflow.git
+cd sourceflow
 ```
 
-Or build only (install manually):
-
-```bash
-./scripts/build-rpm.sh
-sudo dnf install src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
-```
-
-After install:
-
-- **App menu:** Development → SourceFlow (or search “SourceFlow”)
-- **Command:** `sourceflow` (on your `PATH`)
-- **Taskbar:** right-click the launcher entry → pin to task manager
-
-The `.desktop` file sets `StartupWMClass=sourceflow` so KDE groups the running
-window with the launcher icon correctly.
-
-**Runtime dependencies** (pulled in by the RPM): `webkit2gtk4.1`, `libsecret`,
-`git` (required for merge/rebase and external merge tools).
-
-To rebuild after pulling changes: run `./scripts/build-rpm.sh` (it bumps the
-RPM **release** each time so upgrades are detected), then install the new RPM:
-
-```bash
-./scripts/install-rpm.sh
-# or:
-sudo dnf install -y src-tauri/target/release/bundle/rpm/SourceFlow-*.rpm
-```
-
-The RPM **filename** is `SourceFlow-…`; the installed package name is
-`source-flow`. Use **`dnf install`**, not `reinstall`, when moving to a new
-build (e.g. `0.1.0-3` → `0.1.0-4`). `dnf reinstall` only works when that
-exact version-release is already installed.
-
-Quit SourceFlow before upgrading so the binary on disk is replaced.
-
-Other bundle formats (optional): `npm run package:all` builds RPM, AppImage, and deb.
-
-## System Requirements (Fedora KDE)
-
-Build-from-source dependencies (included in the install section above):
-
-```bash
-sudo dnf install \
-    webkit2gtk4.1-devel \
-    openssl-devel \
-    libsecret-devel \
-    libappindicator-gtk3-devel \
-    librsvg2-devel \
-    gcc gcc-c++ \
-    pkgconf-pkg-config
-```
-
-## Toolchain
-
-You need both Rust and Node.js installed:
+You need **Node.js** (18+) and **Rust** (stable):
 
 ```bash
 # Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Node.js (Fedora package or via nvm/fnm)
-sudo dnf install nodejs npm
-
-# Tauri CLI (installed as a project devDependency, no global install needed)
 ```
 
-## Development
+Then install OS packages, `npm install`, and either run in dev mode or build.
+
+### Fedora
 
 ```bash
-cd ~/Projects/sourceflow
+sudo dnf install \
+    webkit2gtk4.1-devel \
+    openssl-devel \
+    libsecret-devel \
+    libappindicator-gtk3-devel \
+    librsvg2-devel \
+    gcc gcc-c++ \
+    pkgconf-pkg-config \
+    nodejs npm
+
 npm install
-npm run tauri dev
+npm run tauri dev          # development
+# or:
+npm run tauri:build        # release binary + bundles
 ```
 
-The first build of the Rust side will take several minutes as it compiles
-libgit2 and other dependencies. Subsequent rebuilds are incremental.
+Daily-driver install (RPM, app menu, pin to taskbar):
+
+```bash
+./scripts/install-rpm.sh
+```
+
+The installed command is `sourceflow`. RPM filename is `SourceFlow-…`; the
+package name is `source-flow`. Quit the app before upgrading.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    libwebkit2gtk-4.1-dev \
+    libssl-dev \
+    libsecret-1-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    pkg-config \
+    build-essential \
+    curl \
+    nodejs npm
+
+npm install
+npm run tauri dev
+# or:
+npm run tauri:build
+```
+
+### macOS
+
+```bash
+xcode-select --install
+# Node via https://nodejs.org or: brew install node
+npm install
+npm run tauri dev
+# or:
+npm run tauri:build
+```
+
+The first Rust build takes several minutes (libgit2). Later rebuilds are
+incremental.
+
+Release bundles land in `src-tauri/target/release/bundle/`:
+Linux `.rpm` / `.deb` / `.AppImage`, macOS `.dmg`.
+
+macOS builds are ad-hoc signed (no Apple Developer ID). After installing a
+`.dmg` from the internet, right-click the app → **Open** the first time, or
+allow it under System Settings → Privacy & Security.
 
 ## GitHub OAuth setup
 
 SourceFlow uses GitHub's [Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow)
-so it never needs a redirect URI or a local HTTP listener. You provide your own
-OAuth App client_id once, the first time you connect.
+so it never needs a redirect URI. You provide your own OAuth App client_id
+once, the first time you connect.
 
 1. Go to <https://github.com/settings/developers> and create a **New OAuth App**.
    - Homepage URL: anything (e.g. `https://github.com/your-username`)
@@ -139,7 +117,8 @@ OAuth App client_id once, the first time you connect.
 3. Copy the **Client ID** (looks like `Iv1.xxxxxxxxxxxxxxxx` or `Ov23li…`).
 4. In SourceFlow, click **Set up GitHub…** in the toolbar and paste it.
 
-The client_id is saved to `~/.config/sourceflow/state.json` and survives
+The client_id is saved to `~/.config/sourceflow/state.json` (Linux) or
+`~/Library/Application Support/sourceflow/state.json` (macOS) and survives
 restarts. You can change or clear it later via right-click on the GitHub
 button.
 
@@ -147,10 +126,6 @@ The access token itself is stored in the OS keyring:
 - Linux: D-Bus Secret Service (KWallet on KDE, GNOME Keyring on GNOME)
 - macOS: Keychain
 - Windows: Credential Manager
-
-so it also survives reboots. (Earlier dev builds used the kernel keyutils
-store which is in-memory only - hence the "click connect after every restart"
-bug. That's fixed.)
 
 ## Project Layout
 
@@ -164,7 +139,7 @@ sourceflow/
 │   └── src/
 │       ├── commands/   # Tauri commands exposed to frontend
 │       ├── git/        # libgit2 wrappers
-│       ├── auth/       # OAuth PKCE + keyring
+│       ├── auth/       # OAuth Device Flow + keyring
 │       └── config.rs   # App config persistence
 └── package.json
 ```
