@@ -280,19 +280,23 @@ pub fn file_diff(path: &Path, file: &str, staged: bool) -> AppResult<DiffPayload
         };
         repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?
     } else {
+        // Untracked files are absent from the index. Without these flags
+        // libgit2 either skips them or emits a delta with no hunks, so the
+        // working-copy panel shows an empty diff.
+        opts.include_untracked(true)
+            .recurse_untracked_dirs(true)
+            .show_untracked_content(true);
         repo.diff_index_to_workdir(None, Some(&mut opts))?
     };
 
     let mut patch = String::new();
     let mut is_binary = false;
     let mut old_path = None;
-    let mut found = false;
 
     diff.foreach(
         &mut |delta, _progress| {
             if let Some(p) = delta.new_file().path() {
                 if p.to_string_lossy() == file {
-                    found = true;
                     is_binary = delta.new_file().is_binary() || delta.old_file().is_binary();
                     old_path = delta
                         .old_file()
@@ -323,11 +327,66 @@ pub fn file_diff(path: &Path, file: &str, staged: bool) -> AppResult<DiffPayload
         }),
     )?;
 
+    // Some libgit2 builds still return an empty patch for a brand-new file.
+    // The worktree copy is the whole change, so render it as additions.
+    if !staged && !is_binary && patch.is_empty() {
+        if let Some(rendered) = untracked_additions(&repo, file) {
+            patch = rendered.patch;
+            is_binary = rendered.is_binary;
+        }
+    }
+
     Ok(DiffPayload {
         path: file.to_string(),
         old_path,
         is_binary,
         patch: if is_binary { String::new() } else { patch },
+    })
+}
+
+struct UntrackedRender {
+    patch: String,
+    is_binary: bool,
+}
+
+/// Full contents of a worktree file that is not in the index, as `+` lines.
+fn untracked_additions(repo: &Repository, file: &str) -> Option<UntrackedRender> {
+    let rel = Path::new(file);
+    if file.is_empty()
+        || rel.is_absolute()
+        || rel.components().any(|c| matches!(c, Component::ParentDir))
+    {
+        return None;
+    }
+    if repo.index().ok()?.get_path(rel, 0).is_some() {
+        return None;
+    }
+    let full = repo.workdir()?.join(rel);
+    let bytes = std::fs::read(&full).ok()?;
+    if bytes.contains(&0) || bytes.len() > 1_048_576 {
+        return Some(UntrackedRender {
+            patch: String::new(),
+            is_binary: true,
+        });
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let mut patch = String::new();
+    if text.is_empty() {
+        return Some(UntrackedRender {
+            patch,
+            is_binary: false,
+        });
+    }
+    for line in text.split_inclusive('\n') {
+        patch.push('+');
+        patch.push_str(line);
+        if !line.ends_with('\n') {
+            patch.push('\n');
+        }
+    }
+    Some(UntrackedRender {
+        patch,
+        is_binary: false,
     })
 }
 
@@ -401,4 +460,76 @@ fn build_signature(repo: &Repository) -> AppResult<Signature<'static>> {
     // `repo.signature()` reads user.name and user.email from the
     // local/global git config and bubbles up a clear error if missing.
     repo.signature().map_err(AppError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct Tmp(PathBuf);
+
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn tmp_repo() -> Tmp {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("sourceflow-stage-{nanos}"));
+        std::fs::create_dir_all(&path).unwrap();
+        let status = Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(&path)
+            .status()
+            .expect("git init");
+        assert!(status.success());
+        std::fs::write(path.join("tracked.txt"), "hello\n").unwrap();
+        for args in [
+            ["add", "tracked.txt"].as_slice(),
+            [
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "init",
+            ]
+            .as_slice(),
+        ] {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(&path)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {args:?} failed");
+        }
+        Tmp(path)
+    }
+
+    #[test]
+    fn untracked_file_diff_includes_contents() {
+        let dir = tmp_repo();
+        std::fs::create_dir_all(dir.0.join("nested")).unwrap();
+        std::fs::write(dir.0.join("nested/new.txt"), "alpha\nbeta\n").unwrap();
+
+        let diff = file_diff(&dir.0, "nested/new.txt", false).unwrap();
+        assert!(!diff.is_binary);
+        assert!(diff.patch.contains("+alpha\n"), "{}", diff.patch);
+        assert!(diff.patch.contains("+beta\n"), "{}", diff.patch);
+    }
+
+    #[test]
+    fn tracked_modification_still_diffs() {
+        let dir = tmp_repo();
+        std::fs::write(dir.0.join("tracked.txt"), "hello\nworld\n").unwrap();
+        let diff = file_diff(&dir.0, "tracked.txt", false).unwrap();
+        assert!(diff.patch.contains("+world\n"), "{}", diff.patch);
+    }
 }

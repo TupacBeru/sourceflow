@@ -95,10 +95,12 @@ export function DiffPanel() {
   }
 
   const lines = diff.patch.split("\n");
+  const untracked = (active?.status.untracked ?? []).some((f) => f.path === sel.path);
+  const kind = sel.staged ? "staged" : untracked ? "untracked" : "unstaged";
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs font-mono text-zinc-300">
-        {sel.staged ? "staged" : "unstaged"} &middot; {diff.path}
+        {kind} &middot; {diff.path}
       </div>
       <div className="flex-1 overflow-auto bg-zinc-950 font-mono text-xs leading-5 scrollbar-thin">
         {lines.map((line, i) => {
